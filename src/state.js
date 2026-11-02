@@ -80,7 +80,9 @@ export function migrate(p) {
 
 export class Store {
   constructor() {
-    this.project = this.loadLocal() ?? sampleProject();
+    const local = this.loadLocal();
+    this.fresh = !local; // pierwsze uruchomienie – brak zapisanego projektu
+    this.project = local ?? sampleProject();
     this.undoStack = [];
     this.redoStack = [];
     this.listeners = new Set();

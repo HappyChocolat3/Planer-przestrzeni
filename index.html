@@ -14,7 +14,11 @@
     <div class="brand">🏠 Planer przestrzeni</div>
     <div class="group">
       <button data-act="new" title="Nowy, pusty projekt">Nowy</button>
-      <button data-act="sample" title="Wczytaj przykładowy projekt">Przykład</button>
+      <select id="templates" title="Gotowe projekty">
+        <option value="">Szablony…</option>
+        <option value="b2m2">Mieszkanie B2.M2 (z antresolą)</option>
+        <option value="sample">Przykład: salon z kuchnią</option>
+      </select>
       <button data-act="open" title="Otwórz projekt z pliku .json">Otwórz</button>
       <button data-act="save" title="Zapisz projekt do pliku .json">Zapisz</button>
       <button data-act="png" title="Zapisz obraz wizualizacji">PNG</button>

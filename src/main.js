@@ -679,7 +679,6 @@ const safeName = () => (store.project.name || 'projekt').replace(/[^\p{L}\p{N}_-
 
 const actions = {
   new: () => confirm('Utworzyć nowy, pusty projekt? Bieżący możesz najpierw zapisać.') && (viewer.select(null), store.replace(emptyProject())),
-  sample: () => confirm('Wczytać projekt przykładowy (zastąpi bieżący)?') && (viewer.select(null), store.replace(sampleProject())),
   open: () => $('#fileOpen').click(),
   save: async () => {
     const assets = await collectAssets(store.project);
@@ -740,15 +739,44 @@ $('#fileOpen').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!f) return;
   try {
-    const p = JSON.parse(await f.text());
-    if (!p.room || !Array.isArray(p.items)) throw new Error('To nie jest plik projektu');
-    await importAssets(p.assets);
-    delete p.assets;
-    viewer.select(null);
-    viewer.setTool(null);
-    store.replace(migrate(p));
+    await openProjectData(JSON.parse(await f.text()));
   } catch (err) {
     alert('Nie udało się otworzyć pliku: ' + err.message);
+  }
+});
+
+async function openProjectData(p) {
+  if (!p.room || !Array.isArray(p.items)) throw new Error('To nie jest plik projektu');
+  await importAssets(p.assets);
+  delete p.assets;
+  viewer.select(null);
+  viewer.setTool(null);
+  store.replace(migrate(p));
+  viewer.resetCamera();
+}
+
+// gotowe projekty (szablony) – pliki w public/projekty
+const TEMPLATES = { b2m2: './projekty/mieszkanie-b2m2.json' };
+async function loadTemplate(key) {
+  if (key === 'sample') {
+    viewer.select(null);
+    store.replace(sampleProject());
+    viewer.resetCamera();
+    return;
+  }
+  const res = await fetch(TEMPLATES[key]);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  await openProjectData(await res.json());
+}
+$('#templates').addEventListener('change', async (e) => {
+  const key = e.target.value;
+  e.target.value = '';
+  if (!key || !confirm('Wczytać ten projekt? Zastąpi bieżący (możesz go najpierw zapisać przyciskiem „Zapisz”).')) return;
+  try {
+    await loadTemplate(key);
+    toast('Wczytano projekt');
+  } catch (err) {
+    toast('Nie udało się wczytać projektu: ' + err.message, true);
   }
 });
 
@@ -1003,3 +1031,10 @@ if (store.project.phTextures?.length) {
   });
 }
 setTimeout(() => $('#hint')?.classList.add('fade'), 8000);
+// pierwsze uruchomienie (lub ?projekt=b2m2 w adresie) – od razu mieszkanie B2.M2
+{
+  const want = new URLSearchParams(location.search).get('projekt');
+  if (TEMPLATES[want] || store.fresh) loadTemplate(TEMPLATES[want] ? want : 'b2m2').catch((e) => console.warn('Szablon niedostępny', e));
+  // ukryj szablon, którego pliku nie ma na serwerze
+  fetch(TEMPLATES.b2m2, { method: 'HEAD' }).then((r) => { if (!r.ok) $('#templates option[value="b2m2"]')?.remove(); }).catch(() => {});
+}
