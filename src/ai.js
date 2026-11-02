@@ -25,6 +25,7 @@ export const PlanSchema = z.object({
   drawings: z.array(z.object({
     name: z.string().describe('Nazwa poziomu po polsku, np. "Parter", "Antresola", "Piętro"'),
     floor_elevation_cm: z.number().nullable().describe('Wysokość podłogi poziomu nad najniższym poziomem, jeśli da się ustalić; inaczej null'),
+    wall_height_cm: z.number().nullable().describe('Wysokość ścian poziomu w cm (do podłogi wyższego poziomu, a na najwyższym do sufitu), jeśli podana na rysunku lub w opisie; inaczej null'),
     calibration: z.object({
       origin_px: Pt.describe('Piksel obrazu, w którym leży punkt (0,0) układu w cm'),
       ref_px: Pt.describe('Piksel drugiego punktu na tej samej poziomej linii co origin, daleko od niego (np. wewnętrzny narożnik po prawej)'),

@@ -72,7 +72,7 @@ function addItem(type, at) {
     switchLevel(up.id);
   }
   if ((type === 'stairs' || type === 'stairsOpen') && upper()) item.h = upper().elev - cur.elev;
-  if (type === 'wall') item.h = store.project.room.h;
+  if (type === 'wall') item.h = levelWallH(viewer.level());
   const pos = at ?? freeSpot(item);
   Object.assign(item, viewer.constrain(item, pos.x, pos.z));
   store.project.items.push(item);
@@ -362,8 +362,9 @@ function renderRoomProps(root) {
       h('button', { onclick: addPerimeter }, '▭ Ściany obrysu')),
     h('div', { class: 'grid2' },
       numField('Grubość nowych', viewer.wallThickness, (v) => { viewer.wallThickness = v; }, { min: 1, unit: 'cm' }),
-      numField('Wysokość', room.h, (v) => { room.h = v; store.commit(); renderProps(); }, { min: 100, max: 1500, unit: 'cm' })),
-    h('button', { class: 'small', onclick: () => { forWalls((w) => (w.h = room.h)); } }, 'Ustaw tę wysokość wszystkim ścianom poziomu'),
+      numField('Wysokość ścian', levelWallH(lvl), (v) => setLevelWallH(lvl, v), { min: 100, max: 1500, unit: 'cm' })),
+    h('p', { class: 'note' }, upperOf(lvl) ? `Wysokość od podłogi poziomu „${lvl.name}” do podłogi poziomu „${upperOf(lvl).name}”. Zmiana przesuwa wyższe poziomy i dopasowuje ściany i schody.` : 'Wysokość od podłogi do sufitu.'),
+    h('button', { class: 'small', onclick: () => { const H = levelWallH(lvl); forWalls((w) => (w.h = H)); } }, 'Ustaw tę wysokość wszystkim ścianom poziomu'),
     h('p', { class: 'note' }, 'Ścianę usuwasz jak mebel: kliknij ją (w rzucie 2D) i wciśnij Del. Drzwi i okna same wycinają otwory.'),
     h('label', { class: 'field' }, h('span', {}, 'Widok ścian w 3D'),
       h('select', { onchange: (e) => { room.wallMode = e.target.value; store.commit(); } },
@@ -375,12 +376,14 @@ function renderRoomProps(root) {
   sec('Poziomy (antresola)',
     store.project.levels.map((l) => h('div', { class: 'level-row' + (l.id === lvl.id ? ' on' : '') },
       h('input', { class: 'lv-name', value: l.name, onchange: (e) => { l.name = e.target.value; store.commit(); renderLevels(); } }),
-      h('input', { class: 'lv-elev', type: 'number', value: l.elev, title: 'Wysokość podłogi poziomu [cm]', onchange: (e) => { l.elev = +e.target.value || 0; store.commit(); viewer.rebuildRoom(); viewer.rebuildAll(); } }),
-      h('span', { class: 'unit' }, 'cm'),
+      h('label', { class: 'lv-num', title: 'Poziom podłogi nad najniższym poziomem [cm]' }, h('small', {}, 'podłoga'),
+        h('input', { type: 'number', value: l.elev, onchange: (e) => setLevelElev(l, +e.target.value || 0) })),
+      h('label', { class: 'lv-num', title: upperOf(l) ? 'Wysokość ścian = do podłogi wyższego poziomu [cm]' : 'Wysokość ścian = do sufitu [cm]' }, h('small', {}, 'wys. ścian'),
+        h('input', { type: 'number', value: levelWallH(l), min: 100, onchange: (e) => setLevelWallH(l, +e.target.value || levelWallH(l)) })),
       h('button', { title: 'Przejdź do poziomu', onclick: () => switchLevel(l.id) }, '→'),
       store.project.levels.length > 1 ? h('button', { title: 'Usuń poziom', class: 'danger', onclick: () => removeLevel(l) }, '✕') : null)),
     h('button', { class: 'small', onclick: addLevel }, '+ Dodaj antresolę / piętro'),
-    h('p', { class: 'note' }, 'Antresola: dodaj poziom na wysokości jej podłogi, potem z katalogu „Antresola i schody” wstaw podłogę antresoli, schody i balustrady. Ściany parteru możesz podwyższyć (np. 500 cm) dla przestrzeni o podwójnej wysokości.'),
+    h('p', { class: 'note' }, 'Każdy poziom ma własną wysokość ścian. Na niższym poziomie to wysokość do podłogi poziomu wyżej (jej zmiana przesuwa wyższe poziomy), na najwyższym – do sufitu. Antresolę dodasz przyciskiem poniżej albo wstawiając z katalogu „Podłogę antresoli”.'),
   );
 
   sec('Podłoga parteru',
@@ -432,9 +435,64 @@ function switchLevel(id) {
   renderProps();
 }
 
+/** Poziom bezpośrednio wyżej (lub null). */
+function upperOf(l) {
+  return [...store.project.levels].sort((a, b) => a.elev - b.elev).find((x) => x.elev > l.elev) ?? null;
+}
+
+/** Wysokość ścian poziomu: do podłogi wyższego poziomu, a na najwyższym – zapisana wysokość do sufitu. */
+function levelWallH(l) {
+  const up = upperOf(l);
+  if (up) return up.elev - l.elev;
+  const lowest = Math.min(...store.project.levels.map((x) => x.elev));
+  return l.wallH ?? (l.elev === lowest ? store.project.room.h : 240);
+}
+
+/** Dopasowuje ściany (i schody) poziomu, które miały „pełną” wysokość old, do nowej wysokości. */
+function retargetHeights(l, oldH, newH) {
+  if (oldH === newH) return;
+  for (const it of store.project.items) {
+    if (it.level !== l.id) continue;
+    if ((it.type === 'wall' || it.type === 'stairs' || it.type === 'stairsOpen' || it.type === 'stairsU') && Math.abs(it.h - oldH) < 1) it.h = newH;
+  }
+}
+
+function setLevelWallH(l, H) {
+  H = Math.max(100, Math.round(H));
+  const oldH = levelWallH(l);
+  const up = upperOf(l);
+  if (up) {
+    // przesuń wszystkie wyższe poziomy o różnicę
+    const delta = H - oldH;
+    for (const x of store.project.levels) if (x.elev > l.elev) x.elev += delta;
+  } else {
+    l.wallH = H;
+  }
+  if (l.elev === Math.min(...store.project.levels.map((x) => x.elev))) store.project.room.h = H;
+  retargetHeights(l, oldH, H);
+  store.commit();
+  viewer.rebuildRoom();
+  viewer.rebuildAll();
+  renderLevels();
+  renderProps();
+}
+
+function setLevelElev(l, elev) {
+  const below = [...store.project.levels].sort((a, b) => b.elev - a.elev).find((x) => x.elev < l.elev);
+  const oldBelowH = below ? levelWallH(below) : null;
+  l.elev = elev;
+  if (below) retargetHeights(below, oldBelowH, levelWallH(below));
+  store.commit();
+  viewer.rebuildRoom();
+  viewer.rebuildAll();
+  renderLevels();
+  renderProps();
+}
+
 function addLevel() {
-  const top = Math.max(...store.project.levels.map((l) => l.elev));
-  const l = { id: 'L' + Date.now().toString(36), name: store.project.levels.length === 1 ? 'Antresola' : `Poziom ${store.project.levels.length + 1}`, elev: top + 260 };
+  const top = [...store.project.levels].sort((a, b) => b.elev - a.elev)[0];
+  const topH = levelWallH(top);
+  const l = { id: 'L' + Date.now().toString(36), name: store.project.levels.length === 1 ? 'Antresola' : `Poziom ${store.project.levels.length + 1}`, elev: top.elev + topH, wallH: 240 };
   store.project.levels.push(l);
   store.commit();
   switchLevel(l.id);
@@ -596,6 +654,10 @@ $('#aiRun').addEventListener('click', async () => {
     $('#aiResult').replaceChildren(
       h('b', {}, 'Rozpoznano:'),
       h('ul', {}, p.drawings.map((d) => h('li', {}, `${d.name}: ${d.walls.length} ścian, ${d.openings.length} drzwi/okien, ${d.rooms.length} pomieszczeń (${d.rooms.map((r) => r.name).join(', ') || '–'}), ${d.fixtures.length} elementów wyposażenia`))),
+      h('b', {}, 'Wysokość ścian poziomów (cm):'),
+      h('div', { class: 'ai-heights' }, p.drawings.map((d, i) => h('label', { class: 'field' },
+        h('span', {}, `${d.name}${i < p.drawings.length - 1 ? ' – do podłogi wyższego poziomu' : ' – do sufitu'}`),
+        h('input', { type: 'number', min: 100, 'data-level': i, value: Math.round(d.wall_height_cm ?? (i < p.drawings.length - 1 ? 265 : p.drawings.length > 1 ? 240 : 260)) })))),
       p.notes ? h('p', { class: 'note' }, 'Uwagi modelu: ' + p.notes) : null,
       h('p', { class: 'note' }, '„Zbuduj model” zastąpi ściany, pomieszczenia i wyposażenie na tych poziomach (możesz to cofnąć Ctrl+Z).'),
     );
@@ -612,7 +674,8 @@ $('#aiRun').addEventListener('click', async () => {
 $('#aiBuild').addEventListener('click', async () => {
   if (!aiState?.plan) return;
   try {
-    await applyRecognizedPlan(aiState.plan, aiState.img.canvas);
+    const heights = [...document.querySelectorAll('.ai-heights input')].map((i) => +i.value || null);
+    await applyRecognizedPlan(aiState.plan, aiState.img.canvas, { heights });
     aiDlg.close();
   } catch (err) {
     $('#aiStatus').textContent = 'Nie udało się zbudować modelu: ' + err.message;
@@ -621,11 +684,11 @@ $('#aiBuild').addEventListener('click', async () => {
 });
 
 /** Buduje model z rozpoznanego planu (używane też w testach). */
-async function applyRecognizedPlan(plan, img) {
+async function applyRecognizedPlan(plan, img, opts = {}) {
   viewer.select(null);
   viewer.setTool(null);
   viewer.isolateId = null;
-  const sum = await buildFromPlan(store.project, plan, img, putAsset);
+  const sum = await buildFromPlan(store.project, plan, img, putAsset, opts);
   // drzwi i okna dosuwamy do najbliższych ścian (otwory w ścianach)
   for (const it of store.project.items) if (it.type === 'door' || it.type === 'window') Object.assign(it, viewer.constrain(it, it.x, it.z));
   store.commit();
@@ -668,7 +731,7 @@ viewer.onWallDrawn = (a, b) => {
   const w = newItem('wall', {
     name: `Ściana ${Math.round(L)} cm`, level: viewer.levelId,
     x: Math.round(((a.x + b.x) / 2) * 10) / 10, z: Math.round(((a.z + b.z) / 2) * 10) / 10,
-    rot: (rot + 360) % 360, w: Math.round(L + t), d: t, h: store.project.room.h,
+    rot: (rot + 360) % 360, w: Math.round(L + t), d: t, h: levelWallH(viewer.level()),
     parts: { body: { ...store.project.room.walls } },
   });
   store.project.items.push(w);
@@ -717,7 +780,7 @@ function fitFloorToPlan() {
 
 function addPerimeter() {
   const walls = perimeterWalls(store.project.room, viewer.levelId);
-  for (const w of walls) w.h = store.project.room.h;
+  for (const w of walls) w.h = levelWallH(viewer.level());
   store.project.items.push(...walls);
   store.commit('add');
   viewer.rebuildAll();

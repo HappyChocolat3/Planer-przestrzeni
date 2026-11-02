@@ -187,3 +187,8 @@ body.dropping .view::after {
 .ai-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 .room-row { display: flex; gap: 4px; margin-bottom: 3px; }
 .room-row .li-name { flex: 1; }
+
+.level-row .lv-num { display: flex; flex-direction: column; font-size: 10px; color: var(--muted); }
+.level-row .lv-num input { width: 66px; }
+.level-row .lv-num small { font-size: 10px; line-height: 1.1; }
+.ai-heights { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 4px 0 8px; }

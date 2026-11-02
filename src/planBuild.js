@@ -37,9 +37,12 @@ export async function buildFromPlan(project, plan, img, putAsset, opts = {}) {
   // poziomy: kolejne rysunki → kolejne poziomy (istniejące lub nowe)
   const sorted = [...project.levels].sort((a, b) => a.elev - b.elev);
   const levels = [];
+  // wysokość ścian każdego poziomu: z okna (użytkownik) → z planu → domyślna
+  const H = drawings.map((d, i) => Math.max(100, opts.heights?.[i] ?? d.wall_height_cm ?? (i < drawings.length - 1 ? 265 : drawings.length > 1 ? 240 : 260)));
   drawings.forEach((d, i) => {
     let lvl = sorted[i];
-    const elev = d.floor_elevation_cm ?? (i === 0 ? 0 : (levels[i - 1].elev + 265));
+    // podłoga wyższego poziomu = podłoga niższego + wysokość jego ścian
+    const elev = i === 0 ? 0 : (opts.heights?.[i - 1] ? levels[i - 1].elev + H[i - 1] : (d.floor_elevation_cm ?? levels[i - 1].elev + H[i - 1]));
     if (!lvl) {
       lvl = { id: 'L' + Date.now().toString(36) + i, name: d.name || `Poziom ${i + 1}`, elev };
       project.levels.push(lvl);
@@ -47,6 +50,7 @@ export async function buildFromPlan(project, plan, img, putAsset, opts = {}) {
       lvl.name = d.name || lvl.name;
       if (i > 0) lvl.elev = elev;
     }
+    lvl.wallH = H[i];
     levels.push(lvl);
   });
   const levelIds = new Set(levels.map((l) => l.id));
@@ -61,7 +65,7 @@ export async function buildFromPlan(project, plan, img, putAsset, opts = {}) {
   for (let i = 0; i < drawings.length; i++) {
     const d = drawings[i], lvl = levels[i];
     const next = levels[i + 1];
-    const wallH = next ? Math.max(200, next.elev - lvl.elev) : (opts.wallHeight ?? 260);
+    const wallH = next ? Math.max(100, next.elev - lvl.elev) : H[i];
     const add = (type, o) => {
       const it = newItem(type, { level: lvl.id, ...o });
       items.push(it);
@@ -164,7 +168,7 @@ export async function buildFromPlan(project, plan, img, putAsset, opts = {}) {
   project.room.d = Math.round(maxY - minY);
   project.room.x = 0;
   project.room.z = 0;
-  project.room.h = levels[1] ? levels[1].elev - levels[0].elev : 260;
+  project.room.h = levels[1] ? levels[1].elev - levels[0].elev : H[0];
   project.items.push(...items);
   summary.notes = plan.notes;
   return summary;

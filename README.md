@@ -32,6 +32,8 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
 - **Antresola / poziomy** – dowolna liczba poziomów z wysokością podłogi; katalog „Antresola i schody”:
   podłoga antresoli (strop), schody proste pełne i ażurowe (wysokość dobiera się do poziomu wyżej),
   balustrady prętowe i szklane. Widok: bieżący poziom, bieżący + niższe lub wszystkie.
+  Każdy poziom ma własną wysokość ścian (np. parter 265 cm, antresola 220 cm) – zmiana dopasowuje ściany, schody
+  i położenie wyższych poziomów.
 
 - **Pomieszczenie** – szerokość, długość, wysokość; materiał i kolor podłogi oraz ścian; ściany od strony kamery
   chowają się automatycznie, żeby było widać wnętrze.
