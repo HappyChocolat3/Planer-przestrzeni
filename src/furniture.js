@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { addBox, addCyl, addRounded } from './geometry.js';
 import { getMaterial, HANDLE_FINISHES } from './materials.js';
+import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 const T = 0.018;   // grubość płyty
 const GAP = 0.003; // szczelina między frontami
@@ -233,6 +234,35 @@ function buildStairs(item, m, open) {
     }
   }
   return g;
+}
+
+export function polygonArea(p) {
+  let s = 0;
+  for (let i = 0; i < p.length; i++) {
+    const [x1, y1] = p[i], [x2, y2] = p[(i + 1) % p.length];
+    s += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(s) / 2;
+}
+
+export function polygonCentroid(p) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < p.length; i++) {
+    const [x1, y1] = p[i], [x2, y2] = p[(i + 1) % p.length];
+    const f = x1 * y2 - x2 * y1;
+    a += f; cx += (x1 + x2) * f; cy += (y1 + y2) * f;
+  }
+  if (Math.abs(a) < 1e-6) return [p.reduce((s, q) => s + q[0], 0) / p.length, p.reduce((s, q) => s + q[1], 0) / p.length];
+  return [cx / (3 * a), cy / (3 * a)];
+}
+
+export function pointInPolygon(x, y, p) {
+  let inside = false;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    const [xi, yi] = p[i], [xj, yj] = p[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }
 
 export const CATALOG = {
@@ -815,6 +845,64 @@ export const CATALOG = {
   },
 
   // ===== ARCHITEKTURA =====
+  room: {
+    label: 'Pomieszczenie', cat: 'Architektura', icon: '⬚', dims: { w: 300, d: 300, h: 1 }, hidden: true,
+    slots: { floor: { label: 'Podłoga pomieszczenia', mat: 'floorOak', color: '#ffffff' } },
+    build(item, m) {
+      // wielokąt podłogi (punkty w cm względem środka), skalowany do bieżących w × d
+      const g = new THREE.Group();
+      const pts = item.points?.length >= 3 ? item.points : [[-150, -150], [150, -150], [150, 150], [-150, 150]];
+      const sx = item.pw ? item.w / item.pw : 1, sz = item.pd ? item.d / item.pd : 1;
+      const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2((x * sx) / 100, (-z * sz) / 100)));
+      const geo = new THREE.ShapeGeometry(shape);
+      geo.rotateX(-Math.PI / 2);
+      const floor = new THREE.Mesh(geo, m('floor'));
+      floor.position.y = 0.002;
+      floor.receiveShadow = true;
+      g.add(floor);
+      if (item.slab > 0) {
+        // strop pod pomieszczeniem na wyższym poziomie (antresola)
+        const t = item.slab / 100;
+        const slab = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false }), getMaterial('paint', '#f4f2ee'));
+        slab.rotation.x = -Math.PI / 2;
+        slab.position.y = -t;
+        slab.castShadow = slab.receiveShadow = true;
+        g.add(slab);
+      }
+      const line = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints(pts.map(([x, z]) => new THREE.Vector3((x * sx) / 100, 0.006, (z * sz) / 100))),
+        new THREE.LineBasicMaterial({ color: '#1f7aec', transparent: true, opacity: 0.55 }),
+      );
+      g.add(line);
+      const el = document.createElement('div');
+      el.className = 'room-label';
+      const area = polygonArea(pts.map(([x, z]) => [x * sx, z * sz])) / 10000;
+      el.innerHTML = `<b></b><span>${area.toFixed(2).replace('.', ',')} m²</span>`;
+      el.querySelector('b').textContent = item.name;
+      const lbl = new CSS2DObject(el);
+      const c = polygonCentroid(pts);
+      lbl.position.set((c[0] * sx) / 100, 0.01, (c[1] * sz) / 100);
+      g.add(lbl);
+      return g;
+    },
+  },
+  washer: {
+    label: 'Pralka', cat: 'Łazienka', icon: '◎', dims: { w: 60, d: 55, h: 85 },
+    slots: { body: { label: 'Obudowa', mat: 'gloss', color: '#f6f6f6' } },
+    build(item, m) {
+      const g = new THREE.Group();
+      const { w, d, h } = item.m;
+      addBox(g, m('body'), w, h, d - 0.02, 0, 0, -0.01);
+      addBox(g, getMaterial('matt', '#d9dcdf'), w - 0.02, 0.1, 0.01, 0, h - 0.12, d / 2 - 0.015);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(Math.min(w, h) * 0.24, 0.02, 12, 40), getMaterial('chrome', '#ffffff'));
+      ring.position.set(0, h * 0.45, d / 2 - 0.01);
+      g.add(ring);
+      const glass = new THREE.Mesh(new THREE.CircleGeometry(Math.min(w, h) * 0.23, 40), getMaterial('glass', '#9fb3c0'));
+      glass.position.set(0, h * 0.45, d / 2 - 0.005);
+      g.add(glass);
+      return g;
+    },
+  },
   wall: {
     label: 'Ściana', cat: 'Architektura', icon: '▮', dims: { w: 200, d: 12, h: 260 },
     slots: { body: { label: 'Ściana', mat: 'paint', color: '#efeae2' } },
@@ -957,6 +1045,6 @@ export function buildItem(item, gltfCache) {
 
 export function catalogByCategory() {
   const out = {};
-  for (const [k, d] of Object.entries(CATALOG)) (out[d.cat] ??= []).push([k, d]);
+  for (const [k, d] of Object.entries(CATALOG)) if (!d.hidden) (out[d.cat] ??= []).push([k, d]);
   return out;
 }

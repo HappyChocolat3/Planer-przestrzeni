@@ -26,10 +26,14 @@
     </div>
     <div class="group">
       <button data-act="plan" title="Wczytaj rzut mieszkania z JPG/PNG/PDF jako podkład">🗺 Plan</button>
+      <button data-act="ai" class="accent" title="Odczytaj plan i zbuduj model mieszkania automatycznie">🤖 Rozpoznaj plan</button>
       <button data-act="drawWalls" title="Rysuj ściany (W)">✏ Ściany</button>
     </div>
     <label class="lvl">Poziom
       <select id="level"></select>
+    </label>
+    <label class="lvl">Pokój
+      <select id="roomPick" title="Wybierz pomieszczenie – widok pokaże tylko je"></select>
     </label>
     <label class="lvl">Pokaż
       <select id="levelView">
@@ -101,6 +105,28 @@
     <div id="pdfPages" class="ph-grid"></div>
   </dialog>
 
+  <dialog id="aiDialog" class="help ai">
+    <form method="dialog">
+      <h2>🤖 Rozpoznaj plan automatycznie</h2>
+      <p>Plan z bieżącego poziomu zostanie wysłany do modelu AI <b>Claude</b> (Anthropic), który odczyta z niego
+        wymiary, ściany, drzwi, okna, pomieszczenia i wyposażenie – a planer zbuduje z tego model 3D
+        (także antresolę, jeśli jest na tym samym arkuszu).</p>
+      <div id="aiNoPlan" class="ai-warn" hidden>Na tym poziomie nie ma jeszcze planu. <button type="button" id="aiPickFile">Wybierz plik planu (JPG / PNG / PDF)…</button></div>
+      <label class="field"><span>Klucz API Anthropic (console.anthropic.com → API Keys)</span>
+        <input id="aiKey" type="password" autocomplete="off" placeholder="sk-ant-…" /></label>
+      <label class="check"><input id="aiRemember" type="checkbox" /> Zapamiętaj klucz w tej przeglądarce</label>
+      <p class="note">Koszt jednego rozpoznania to zwykle kilka–kilkadziesiąt groszy (rozliczane na Twoim koncie Anthropic).
+        Klucz trafia tylko do api.anthropic.com – nie do autora strony. Nie zapamiętuj go na cudzym komputerze.</p>
+      <div id="aiStatus" class="ai-status"></div>
+      <div id="aiResult" class="ai-result"></div>
+      <div class="ai-buttons">
+        <button type="button" id="aiRun" class="accent">Rozpoznaj</button>
+        <button type="button" id="aiBuild" class="accent" hidden>Zbuduj model</button>
+        <button type="button" id="aiCancel">Zamknij</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="helpDialog" class="help">
     <form method="dialog">
       <h2>Jak korzystać</h2>
@@ -110,6 +136,8 @@
         <li><b>Kamera 3D</b> – lewy przycisk na pustym miejscu: obrót, prawy: przesuwanie, kółko: przybliżenie. W rzucie 2D: prawy – przesuwanie, kółko – zoom.</li>
         <li><b>Plan mieszkania</b> – „🗺 Plan” wczytuje rzut z JPG, PNG lub PDF (z PDF wybierasz stronę) – możesz też po prostu przeciągnąć plik na okno albo wkleić zrzut ekranu (Ctrl+V). Potem kliknij dwa końce odcinka o znanej długości i wpisz ją w cm – plan dostanie prawdziwą skalę. „Przesuń plan” pozwala go dopasować.</li>
         <li><b>Ściany</b> – „✏ Ściany” (klawisz <kbd>W</kbd>): klikaj kolejne narożniki po planie, podwójne kliknięcie lub <kbd>Esc</kbd> kończy. Każdą ścianę (także obrysu) zaznaczysz w rzucie 2D i usuniesz klawiszem <kbd>Del</kbd>. Drzwi i okna same wycinają w ścianach otwory.</li>
+        <li><b>🤖 Rozpoznaj plan</b> – wczytany rzut (zdjęcie, skan, PDF) odczytuje model AI Claude i od razu budowany jest model: ściany, drzwi, okna, pomieszczenia, kuchnia, łazienka, schody i antresola. Potrzebny jest własny klucz API Anthropic. Wynik warto sprawdzić i poprawić.</li>
+        <li><b>Pomieszczenia</b> – wybierasz je z listy „Pokój” u góry (widok pokaże tylko ten pokój) albo klikając podłogę. Pokój możesz też narysować ręcznie: „Narysuj pomieszczenie” w panelu po prawej.</li>
         <li><b>Antresola</b> – w panelu „Poziomy” dodaj poziom na wysokości podłogi antresoli (lub po prostu wstaw z katalogu „Podłogę antresoli” – poziom utworzy się sam). Na każdym poziomie może być osobny plan. Schody dostają wysokość do następnego poziomu automatycznie.</li>
         <li><b>Edycja</b> – po zaznaczeniu mebla w panelu po prawej zmienisz wymiary, kolory, materiały i uchwyty.</li>
         <li><b>Skróty</b>: <kbd>R</kbd> obrót o 90°, <kbd>Q</kbd>/<kbd>E</kbd> obrót o 15°, strzałki – przesuwanie, <kbd>Del</kbd> usuń, <kbd>Ctrl+D</kbd> duplikuj, <kbd>Ctrl+Z</kbd>/<kbd>Ctrl+Y</kbd> cofnij/ponów, <kbd>Esc</kbd> odznacz.</li>

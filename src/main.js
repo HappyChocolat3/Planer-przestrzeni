@@ -6,6 +6,7 @@ import { CATALOG, newItem, catalogByCategory } from './furniture.js';
 import { MATERIALS, HANDLE_TYPES, HANDLE_FINISHES, materialOptions, materialLabel, defaultColorFor, PH_PREFIX } from './materials.js';
 import * as PH from './polyhaven.js';
 import { Box3, Vector3 } from 'three';
+import { buildFromPlan, roomArea } from './planBuild.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const h = (tag, attrs = {}, ...kids) => {
@@ -178,6 +179,7 @@ function renderProps() {
   const id = viewer.selectedId;
   const item = id && store.item(id);
   if (!item) return renderRoomProps(root);
+  if (item.type === 'room') return renderRoomItemProps(root, item);
   const def = CATALOG[item.type];
   const rebuild = (done = true) => {
     viewer.rebuildItem(item.id);
@@ -326,6 +328,7 @@ function renderRoomProps(root) {
   sec(`Plan mieszkania – ${lvl.name}`,
     h('p', { class: 'note' }, 'Wczytaj rzut z pliku JPG, PNG lub PDF, ustaw skalę i obrysuj ściany narzędziem „Rysuj ściany”.'),
     h('button', { class: 'small primary', onclick: () => $('#filePlan').click() }, plan ? '🗺 Wczytaj inny plan…' : '🗺 Wczytaj plan (JPG / PNG / PDF)…'),
+    h('button', { class: 'small', onclick: openAI }, '🤖 Rozpoznaj plan i zbuduj model (AI)…'),
     plan ? [
       h('div', { class: 'row-btns' },
         h('button', { class: viewer.tool === 'calib' ? 'on' : '', onclick: () => startTool('calib') }, '📏 Ustaw skalę'),
@@ -339,6 +342,17 @@ function renderRoomProps(root) {
       h('button', { class: 'small', onclick: fitFloorToPlan }, 'Dopasuj podłogę do planu'),
       h('button', { class: 'small danger', onclick: () => { delete lvl.plan; viewer.rebuildPlans(); store.commit(); renderProps(); } }, 'Usuń plan'),
     ] : null,
+  );
+
+  // --- pomieszczenia ---
+  const rooms = store.project.items.filter((it) => it.type === 'room' && it.level === lvl.id);
+  sec(`Pomieszczenia – ${lvl.name}`,
+    rooms.length ? rooms.map((r) => h('div', { class: 'room-row' },
+      h('button', { class: 'li-name', onclick: () => pickRoom(r.id) }, r.name, h('small', {}, ` ${fmtArea(roomArea(r))}`)),
+      h('button', { class: 'li-del', title: 'Usuń pomieszczenie', onclick: () => removeItem(r.id) }, '✕')))
+      : h('p', { class: 'note' }, 'Brak pomieszczeń. Rozpoznaj plan automatycznie albo narysuj pomieszczenie po planie.'),
+    h('button', { class: 'small' + (viewer.tool === 'room' ? ' on' : ''), onclick: () => startTool(viewer.tool === 'room' ? null : 'room') }, '⬚ Narysuj pomieszczenie'),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: viewer.showRoomLabels !== false, onchange: (e) => { viewer.showRoomLabels = e.target.checked; } }), ' Pokazuj nazwy i powierzchnie'),
   );
 
   // --- ściany ---
@@ -438,6 +452,198 @@ function removeLevel(l) {
   switchLevel(viewer.levelId);
 }
 
+// ---------- pomieszczenia ----------
+const fmtArea = (m2) => `${m2.toFixed(2).replace('.', ',')} m²`;
+
+function renderRoomItemProps(root, item) {
+  const rebuild = (done = true) => { viewer.rebuildItem(item.id); if (done) store.commit(); };
+  const isolated = viewer.isolateId === item.id;
+  root.append(
+    h('div', { class: 'props-head' },
+      h('input', { class: 'name', value: item.name, onchange: (e) => { item.name = e.target.value; rebuild(); renderRoomPick(); } }),
+      h('div', { class: 'note' }, `Pomieszczenie • ${fmtArea(roomArea(item))}${item.areaLabel ? ` (wg planu ${fmtArea(item.areaLabel)})` : ''}`),
+      h('div', { class: 'row-btns' },
+        h('button', { class: isolated ? 'on' : '', onclick: () => { viewer.isolateId = isolated ? null : item.id; renderRoomPick(); renderProps(); } }, isolated ? '👁 Pokaż całość' : '👁 Tylko ten pokój'),
+        h('button', { onclick: () => viewer.focusOn(item.id) }, '⌖ Przybliż'),
+        h('button', { onclick: () => { viewer.isolateId = null; viewer.select(null); renderRoomPick(); } }, '← Całe mieszkanie'),
+        h('button', { class: 'danger', onclick: removeSelected }, '🗑 Usuń')),
+    ),
+  );
+  root.append(h('section', { class: 'sec' }, h('h4', {}, 'Podłoga'),
+    partEditor('Podłoga pomieszczenia', (item.parts.floor ??= { mat: 'floorOak', color: '#ffffff' }), rebuild)));
+  const inside = store.project.items.filter((it) => it.level === item.level && !['room', 'wall'].includes(it.type) && insideRoom(item, it));
+  root.append(h('section', { class: 'sec' }, h('h4', {}, `W tym pomieszczeniu (${inside.length})`),
+    h('div', { class: 'item-list' }, inside.map((it) => h('div', { class: 'li' },
+      h('button', { class: 'li-name', onclick: () => viewer.select(it.id) }, it.name, h('small', {}, ` ${it.w}×${it.d}×${it.h}`)),
+      h('button', { class: 'li-del', title: 'Usuń', onclick: () => removeItem(it.id) }, '✕'))))));
+}
+
+function insideRoom(room, it) {
+  const sx = room.pw ? room.w / room.pw : 1, sz = room.pd ? room.d / room.pd : 1;
+  const poly = (room.points ?? []).map(([x, z]) => [room.x + x * sx, room.z + z * sz]);
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if (zi > it.z !== zj > it.z && it.x < ((xj - xi) * (it.z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Wybór pomieszczenia: zaznaczenie, widok tylko na nie i przybliżenie. */
+function pickRoom(id) {
+  const r = store.item(id);
+  if (!r) return;
+  if (r.level !== viewer.levelId) switchLevel(r.level);
+  viewer.isolateId = id;
+  viewer.select(id);
+  viewer.focusOn(id);
+  renderRoomPick();
+}
+
+function renderRoomPick() {
+  const sel = $('#roomPick');
+  const rooms = store.project.items.filter((it) => it.type === 'room');
+  sel.innerHTML = '';
+  sel.append(h('option', { value: '' }, 'Całe mieszkanie'));
+  for (const l of store.project.levels) {
+    const lr = rooms.filter((r) => r.level === l.id);
+    if (!lr.length) continue;
+    const og = h('optgroup', { label: l.name });
+    for (const r of lr) og.append(h('option', { value: r.id, selected: viewer.isolateId === r.id }, `${r.name} – ${fmtArea(roomArea(r))}`));
+    sel.append(og);
+  }
+  sel.parentElement.style.display = rooms.length ? '' : 'none';
+}
+$('#roomPick').addEventListener('change', (e) => {
+  if (e.target.value) pickRoom(e.target.value);
+  else { viewer.isolateId = null; viewer.select(null); viewer.resetCamera(); renderRoomPick(); }
+});
+
+viewer.onRoomDrawn = (pts) => {
+  const xs = pts.map((p) => p.x), zs = pts.map((p) => p.z);
+  const x = (Math.min(...xs) + Math.max(...xs)) / 2, z = (Math.min(...zs) + Math.max(...zs)) / 2;
+  const w = Math.round(Math.max(...xs) - Math.min(...xs)), d = Math.round(Math.max(...zs) - Math.min(...zs));
+  const n = store.project.items.filter((it) => it.type === 'room').length + 1;
+  const name = prompt('Nazwa pomieszczenia:', `Pokój ${n}`);
+  if (name === null) return;
+  const r = newItem('room', {
+    name: name || `Pokój ${n}`, level: viewer.levelId, x, z, w, d, h: 1, locked: true, pw: w, pd: d,
+    points: pts.map((p) => [Math.round((p.x - x) * 10) / 10, Math.round((p.z - z) * 10) / 10]),
+  });
+  store.project.items.push(r);
+  store.commit('add');
+  viewer.rebuildItem(r.id);
+  renderRoomPick();
+  renderProps();
+};
+
+// ---------- rozpoznawanie planu przez AI ----------
+let aiState = null;
+const aiDlg = $('#aiDialog');
+
+async function openAI() {
+  const ai = await import('./ai.js');
+  $('#aiKey').value = ai.savedKey();
+  $('#aiRemember').checked = !!ai.savedKey();
+  $('#aiNoPlan').hidden = !!viewer.level().plan;
+  $('#aiRun').disabled = !viewer.level().plan;
+  $('#aiStatus').textContent = '';
+  $('#aiStatus').classList.remove('err');
+  $('#aiResult').innerHTML = '';
+  $('#aiBuild').hidden = true;
+  aiState = null;
+  if (!aiDlg.open) aiDlg.showModal();
+}
+
+$('#aiPickFile').addEventListener('click', () => { pendingAI = true; aiDlg.close(); $('#filePlan').click(); });
+$('#aiCancel').addEventListener('click', () => { aiState?.abort?.abort(); aiDlg.close(); });
+
+/** Obraz planu bieżącego poziomu (pomniejszony do max 2400 px – wystarcza do odczytu wymiarów). */
+async function planImageForAI() {
+  const url = await resolveAsset(viewer.level().plan.src);
+  const img = await new Promise((ok, err) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => err(new Error('nie można odczytać obrazu planu')); i.src = url; });
+  const k = Math.min(1, 2400 / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * k);
+  c.height = Math.round(img.naturalHeight * k);
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(img, 0, 0, c.width, c.height);
+  return { canvas: c, dataUrl: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height };
+}
+
+$('#aiRun').addEventListener('click', async () => {
+  const ai = await import('./ai.js');
+  const key = $('#aiKey').value.trim();
+  const status = $('#aiStatus');
+  status.classList.remove('err');
+  if (!key) { status.textContent = 'Wpisz klucz API.'; status.classList.add('err'); return; }
+  ai.saveKey($('#aiRemember').checked ? key : '');
+  $('#aiRun').disabled = true;
+  $('#aiResult').innerHTML = '';
+  const abort = new AbortController();
+  aiState = { abort };
+  const t0 = Date.now();
+  status.textContent = 'Wysyłanie planu…';
+  const tick = setInterval(() => { status.textContent = `Model analizuje plan… ${Math.round((Date.now() - t0) / 1000)} s (zwykle 1–3 min)`; }, 1000);
+  try {
+    const img = await planImageForAI();
+    const res = await ai.recognizePlan(key, img.dataUrl, img.w, img.h, abort.signal);
+    aiState = { ...res, img };
+    const p = res.plan;
+    status.textContent = `Gotowe po ${Math.round((Date.now() - t0) / 1000)} s.`;
+    $('#aiResult').replaceChildren(
+      h('b', {}, 'Rozpoznano:'),
+      h('ul', {}, p.drawings.map((d) => h('li', {}, `${d.name}: ${d.walls.length} ścian, ${d.openings.length} drzwi/okien, ${d.rooms.length} pomieszczeń (${d.rooms.map((r) => r.name).join(', ') || '–'}), ${d.fixtures.length} elementów wyposażenia`))),
+      p.notes ? h('p', { class: 'note' }, 'Uwagi modelu: ' + p.notes) : null,
+      h('p', { class: 'note' }, '„Zbuduj model” zastąpi ściany, pomieszczenia i wyposażenie na tych poziomach (możesz to cofnąć Ctrl+Z).'),
+    );
+    $('#aiBuild').hidden = false;
+  } catch (err) {
+    if (abort.signal.aborted) status.textContent = 'Przerwano.';
+    else { status.textContent = 'Nie udało się: ' + ai.aiErrorMessage(err); status.classList.add('err'); console.error(err); }
+  } finally {
+    clearInterval(tick);
+    $('#aiRun').disabled = false;
+  }
+});
+
+$('#aiBuild').addEventListener('click', async () => {
+  if (!aiState?.plan) return;
+  try {
+    await applyRecognizedPlan(aiState.plan, aiState.img.canvas);
+    aiDlg.close();
+  } catch (err) {
+    $('#aiStatus').textContent = 'Nie udało się zbudować modelu: ' + err.message;
+    $('#aiStatus').classList.add('err');
+  }
+});
+
+/** Buduje model z rozpoznanego planu (używane też w testach). */
+async function applyRecognizedPlan(plan, img) {
+  viewer.select(null);
+  viewer.setTool(null);
+  viewer.isolateId = null;
+  const sum = await buildFromPlan(store.project, plan, img, putAsset);
+  // drzwi i okna dosuwamy do najbliższych ścian (otwory w ścianach)
+  for (const it of store.project.items) if (it.type === 'door' || it.type === 'window') Object.assign(it, viewer.constrain(it, it.x, it.z));
+  store.commit();
+  viewer.levelId = store.project.levels[0].id;
+  viewer.rebuildRoom();
+  viewer.rebuildAll();
+  renderLevels();
+  renderRoomPick();
+  renderProps();
+  setViewMode('3d');
+  viewer.levelView = 'all';
+  $('#levelView').value = 'all';
+  viewer.resetCamera();
+  toast(`Zbudowano model: ${sum.walls} ścian, ${sum.rooms} pomieszczeń, ${sum.fixtures} elementów wyposażenia (${sum.levels.map((l) => l.name).join(' + ')})`);
+  return sum;
+}
+window.planer.applyRecognizedPlan = applyRecognizedPlan;
+
 // ---------- ściany i plan ----------
 function startTool(tool) {
   if (tool && viewer.mode !== '2d') setViewMode('2d');
@@ -447,6 +653,7 @@ function startTool(tool) {
     wall: 'Rysowanie ścian: klikaj kolejne narożniki (przyciąganie do 45° i końców ścian, Shift = dowolny kąt). Podwójne kliknięcie / prawy przycisk / Esc kończy ciąg, drugi Esc wyłącza narzędzie.',
     calib: 'Skala: kliknij początek i koniec odcinka o znanej długości (np. ściany z wymiarem na planie).',
     plan: 'Przeciągnij plan myszą, aby dopasować go do ścian. Esc kończy.',
+    room: 'Pomieszczenie: klikaj kolejne narożniki podłogi (przyciąganie do końców ścian). Kliknięcie w pierwszy punkt lub podwójne kliknięcie zamyka obrys.',
   }[tool];
   $('#toolHint').textContent = msg ?? '';
   $('#toolHint').hidden = !msg;
@@ -527,6 +734,7 @@ function removeAllWalls() {
   renderProps();
 }
 
+let pendingAI = false;
 async function loadPlanFile(file) {
   try {
     let img;
@@ -549,8 +757,13 @@ async function loadPlanFile(file) {
     store.commit();
     await viewer.rebuildPlans();
     viewer.fitOrtho();
-    startTool('calib');
-    toast('Plan wczytany. Teraz ustaw skalę: kliknij dwa końce odcinka o znanej długości.');
+    if (pendingAI) {
+      pendingAI = false;
+      openAI();
+    } else {
+      startTool('calib');
+      toast('Plan wczytany. Ustaw skalę (kliknij dwa końce odcinka o znanej długości) albo użyj „🤖 Rozpoznaj plan”.');
+    }
   } catch (err) {
     console.error(err);
     toast('Nie udało się wczytać planu: ' + err.message, true);
@@ -586,6 +799,7 @@ function rotate(deg) {
 
 function removeItem(id) {
   const it = store.item(id);
+  if (viewer.isolateId === id) viewer.isolateId = null;
   store.project.items = store.project.items.filter((i) => i.id !== id);
   viewer.removeItemObject(id);
   if (it && (it.type === 'wall' || it.type === 'door' || it.type === 'window')) viewer.rebuildWalls(it.level);
@@ -642,6 +856,7 @@ store.onChange((kind) => {
     });
   }
   if (kind === 'add' || kind === 'remove') renderList();
+  renderRoomPick();
 });
 
 document.addEventListener('keydown', (e) => {
@@ -657,6 +872,7 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'e') rotate(15);
   else if (k === 'escape') {
     if (viewer.tool === 'wall' && viewer.drawStart) viewer.setTool('wall'); // koniec bieżącego ciągu ścian
+    else if (viewer.tool === 'room' && viewer.roomPts?.length) viewer.finishRoom();
     else if (viewer.tool) startTool(null);
     else viewer.select(null);
   }
@@ -709,6 +925,7 @@ const actions = {
   import: () => $('#fileModel').click(),
   help: () => $('#helpDialog').showModal(),
   plan: () => $('#filePlan').click(),
+  ai: () => { if (!viewer.level().plan) { pendingAI = true; $('#filePlan').click(); } else openAI(); },
   theme: () => {
     const order = ['auto', 'light', 'dark'];
     setTheme(order[(order.indexOf(themePref()) + 1) % order.length]);
@@ -1020,6 +1237,7 @@ window.addEventListener('paste', (e) => {
 // ---------- start ----------
 applyTheme();
 renderLevels();
+renderRoomPick();
 renderCatalog();
 renderProps();
 viewer.resetCamera();

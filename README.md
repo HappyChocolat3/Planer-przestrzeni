@@ -17,6 +17,12 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
 
 ## Funkcje
 
+- **🤖 Rozpoznawanie planu (AI)** – wczytany rzut (zdjęcie, skan, PDF) odczytuje model Claude (Anthropic):
+  wymiary z opisów, ściany, drzwi, okna, pomieszczenia (z nazwami i powierzchnią), kuchnię, łazienkę, schody,
+  a także kolejne rysunki z arkusza (np. antresolę) – i planer od razu buduje z tego model 3D z podkładem planu.
+  Potrzebny jest własny klucz API Anthropic (wpisywany w przeglądarce, wysyłany tylko do api.anthropic.com).
+- **Pomieszczenia** – osobne elementy z nazwą, powierzchnią i własną podłogą; lista „Pokój” w pasku narzędzi
+  pokazuje wybrane pomieszczenie osobno (z jego ścianami i wyposażeniem). Pomieszczenie można też narysować ręcznie.
 - **Plan mieszkania jako podkład** – wczytaj rzut z **JPG / PNG / PDF** (z wielostronicowego PDF wybierasz stronę).
   Skalę ustawiasz, klikając dwa końce odcinka o znanej długości i wpisując ją w cm. Plan można przesuwać,
   obracać, zmieniać przezroczystość; każdy poziom (parter, antresola) może mieć własny plan.
@@ -76,4 +82,6 @@ src/
   state.js      – projekt, poziomy, historia zmian, autozapis
   assets.js     – duże pliki (plany, modele) w IndexedDB przeglądarki
   planimport.js – wczytywanie planu z obrazu lub PDF (pdf.js)
+  ai.js         – rozpoznawanie planu przez Claude (Anthropic SDK, structured outputs)
+  planBuild.js  – budowa modelu (poziomy, ściany, otwory, pomieszczenia, wyposażenie) z rozpoznanego planu
 ```

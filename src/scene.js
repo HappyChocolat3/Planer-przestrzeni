@@ -6,11 +6,11 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { boxGeo } from './geometry.js';
 import { getMaterial } from './materials.js';
-import { buildItem } from './furniture.js';
+import { buildItem, pointInPolygon } from './furniture.js';
 import { resolveAsset } from './assets.js';
 
 const IN_WALL = new Set(['door', 'window']);
-const FREE = new Set(['wall', 'railing', 'railingGlass']); // bez ograniczania do obrysu podłogi
+const FREE = new Set(['wall', 'railing', 'railingGlass', 'room']); // bez ograniczania do obrysu podłogi
 const deg = THREE.MathUtils.degToRad;
 
 export class Viewer {
@@ -32,6 +32,8 @@ export class Viewer {
     this.onToolDone = () => {};
     this.onWallDrawn = () => {};
     this.onCalibrate = () => {};
+    this.onRoomDrawn = () => {};
+    this.isolateId = null;
 
     const r = (this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }));
     r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -234,7 +236,7 @@ export class Viewer {
 
   // ---------- elementy ----------
   rebuildAll() {
-    for (const o of this.objects.values()) this.itemsGroup.remove(o);
+    for (const o of this.objects.values()) disposeLabels(o), this.itemsGroup.remove(o);
     this.objects.clear();
     for (const it of this.store.project.items) this.rebuildItem(it.id, false);
     for (const l of this.levels) this.rebuildWalls(l.id);
@@ -244,7 +246,7 @@ export class Viewer {
 
   rebuildItem(id, walls = true) {
     const old = this.objects.get(id);
-    if (old) this.itemsGroup.remove(old);
+    if (old) disposeLabels(old), this.itemsGroup.remove(old);
     this.objects.delete(id);
     const item = this.store.item(id);
     if (!item) return;
@@ -317,7 +319,7 @@ export class Viewer {
   removeItemObject(id) {
     const it = this.store.item(id);
     const o = this.objects.get(id);
-    if (o) this.itemsGroup.remove(o);
+    if (o) disposeLabels(o), this.itemsGroup.remove(o);
     this.objects.delete(id);
     this.hostOf.delete(id);
     return it;
@@ -375,6 +377,27 @@ export class Viewer {
     this.ortho.updateProjectionMatrix();
   }
 
+  /** Ustawia kamerę na wybrany element (np. pomieszczenie). */
+  focusOn(id) {
+    const o = this.objects.get(id);
+    if (!o) return;
+    const prevVis = o.visible;
+    o.visible = true;
+    const box = new THREE.Box3().setFromObject(o);
+    o.visible = prevVis;
+    const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+    const m = Math.max(size.x, size.z, 2);
+    this.controls.target.set(c.x, c.y + 0.6, c.z);
+    this.persp.position.set(c.x + m * 0.55, c.y + m * 1.05 + 1.2, c.z + m * 0.95);
+    const rect = this.container.getBoundingClientRect();
+    const aspect = rect.width / Math.max(rect.height, 1);
+    const half = Math.max(size.z / 2 + 0.6, (size.x / 2 + 0.6) / aspect);
+    Object.assign(this.ortho, { left: -half * aspect, right: half * aspect, top: half, bottom: -half, zoom: 1 });
+    this.ortho.position.set(c.x, 60, c.z);
+    this.orthoControls.target.set(c.x, 0, c.z);
+    this.ortho.updateProjectionMatrix();
+  }
+
   resetCamera() {
     const room = this.store.project.room;
     const m = Math.max(room.w, room.d) / 100;
@@ -400,10 +423,21 @@ export class Viewer {
     const cam = this.camera.position, tgt = this.controls.target;
     const in3d = this.mode === '3d';
     const hiddenWalls = new Set();
+    const iso = this.isolateId && this.store.item(this.isolateId);
+    const isoPoly = iso ? roomPolygon(iso) : null;
+    const isoBox = isoPoly ? bboxOf(isoPoly, 25) : null;
+    if (this.isolateId && !iso) this.isolateId = null;
     for (const it of this.store.project.items) {
       const o = this.objects.get(it.id);
       if (!o) continue;
       let vis = this.levelVisible(o.userData.levelId);
+      if (vis && iso) {
+        if (o.userData.levelId !== this.level(iso.level).id) vis = false;
+        else if (it.type === 'room') vis = it.id === iso.id;
+        else if (it.type === 'wall') vis = wallTouchesBox(it, isoBox);
+        else if (IN_WALL.has(it.type)) vis = pointInBox(it.x, it.z, isoBox);
+        else vis = pointInPolygon(it.x, it.z, isoPoly);
+      }
       o.scale.y = 1;
       if (vis && it.type === 'wall' && in3d) {
         if (mode === 'hidden') vis = false;
@@ -419,6 +453,7 @@ export class Viewer {
       }
       o.visible = vis;
       if (it.type === 'wall') for (const c of o.children) if (c.children[0]?.userData.cap) c.visible = !in3d;
+      if (it.type === 'room') o.traverse((c) => { if (c.isCSS2DObject) c.visible = vis && this.showRoomLabels !== false; });
     }
     for (const it of this.store.project.items) {
       if (!IN_WALL.has(it.type)) continue;
@@ -478,6 +513,8 @@ export class Viewer {
     this.tool = tool;
     this.drawStart = null;
     this.calibStart = null;
+    this.roomPts = null;
+    if (this.roomLine) this.roomLine.visible = false;
     this.toolLine.visible = this.toolLabel.visible = this.toolCursor.visible = false;
     this.renderer.domElement.style.cursor = tool ? 'crosshair' : '';
   }
@@ -515,6 +552,25 @@ export class Viewer {
     return { x: Math.round(x / s) * s, z: Math.round(z / s) * s };
   }
 
+  /** Podgląd rysowanego pomieszczenia (łamana). */
+  showRoomPreview() {
+    const y = this.levelElev(this.levelId) + 0.02;
+    if (!this.roomLine) {
+      this.roomLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#16a34a', depthTest: false }));
+      this.roomLine.renderOrder = 20;
+      this.toolGroup.add(this.roomLine);
+    }
+    this.roomLine.geometry.dispose();
+    this.roomLine.geometry = new THREE.BufferGeometry().setFromPoints((this.roomPts ?? []).map((p) => new THREE.Vector3(p.x / 100, y, p.z / 100)));
+    this.roomLine.visible = true;
+  }
+
+  finishRoom() {
+    const pts = this.roomPts ?? [];
+    this.setTool('room');
+    if (pts.length >= 3) this.onRoomDrawn(pts);
+  }
+
   showToolLine(a, b, text) {
     const y = this.levelElev(this.levelId) + 0.02;
     this.toolLine.geometry.setFromPoints([new THREE.Vector3(a.x / 100, y, a.z / 100), new THREE.Vector3(b.x / 100, y, b.z / 100)]);
@@ -531,6 +587,7 @@ export class Viewer {
 
     el.addEventListener('dblclick', () => {
       if (this.tool === 'wall') this.setTool('wall');
+      if (this.tool === 'room') this.finishRoom();
     });
     el.addEventListener('contextmenu', (e) => {
       if (this.tool === 'wall' && this.drawStart) {
@@ -550,6 +607,17 @@ export class Viewer {
           this.onWallDrawn(this.drawStart, p);
         }
         this.drawStart = { x: p.x, z: p.z };
+        return;
+      }
+      if (this.tool === 'room') {
+        const p = this.drawPoint(ev);
+        if (!p) return;
+        const pts = (this.roomPts ??= []);
+        if (pts.length >= 3 && Math.hypot(p.x - pts[0].x, p.z - pts[0].z) < 15) return this.finishRoom();
+        const last = pts[pts.length - 1];
+        if (!last || Math.hypot(p.x - last.x, p.z - last.z) > 2) pts.push({ x: p.x, z: p.z });
+        this.drawStart = pts[pts.length - 1];
+        this.showRoomPreview();
         return;
       }
       if (this.tool === 'calib') {
@@ -579,6 +647,7 @@ export class Viewer {
         const item = this.store.item(id);
         if (item.locked) return;
         if (item.type === 'wall' && this.mode === '3d') return; // w 3D ściany nie przesuwamy (łatwo o pomyłkę)
+        if (item.type === 'room' && !item.movable) return; // pomieszczenie tylko zaznaczamy
         const p = this.floorPoint(ev);
         if (!p) return;
         drag = { id, dx: item.x / 100 - p.x, dz: item.z / 100 - p.z, moved: false };
@@ -588,7 +657,7 @@ export class Viewer {
     });
 
     el.addEventListener('pointermove', (ev) => {
-      if (this.tool === 'wall') {
+      if (this.tool === 'wall' || this.tool === 'room') {
         const p = this.drawPoint(ev);
         if (!p) return;
         const y = this.levelElev(this.levelId) + 0.02;
@@ -695,3 +764,36 @@ export class Viewer {
 
 const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 const round1 = (v) => Math.round(v * 10) / 10;
+
+function disposeLabels(obj) {
+  obj.traverse((o) => { if (o.isCSS2DObject) o.element.remove(); });
+}
+
+/** Wielokąt pomieszczenia w cm, w układzie świata. */
+export function roomPolygon(it) {
+  const sx = it.pw ? it.w / it.pw : 1, sz = it.pd ? it.d / it.pd : 1;
+  return (it.points ?? []).map(([x, z]) => [it.x + x * sx, it.z + z * sz]);
+}
+
+function bboxOf(p, pad = 0) {
+  const xs = p.map((q) => q[0]), zs = p.map((q) => q[1]);
+  return { x0: Math.min(...xs) - pad, x1: Math.max(...xs) + pad, z0: Math.min(...zs) - pad, z1: Math.max(...zs) + pad };
+}
+
+function pointInBox(x, z, b) {
+  return x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1;
+}
+
+/** Czy oś ściany przechodzi przez prostokąt (Liang–Barsky). */
+function wallTouchesBox(w, b) {
+  const a = deg(w.rot), L = w.w / 2;
+  const x1 = w.x - Math.cos(a) * L, z1 = w.z - Math.sin(a) * L, x2 = w.x + Math.cos(a) * L, z2 = w.z + Math.sin(a) * L;
+  let t0 = 0, t1 = 1;
+  const dx = x2 - x1, dz = z2 - z1;
+  for (const [p, q] of [[-dx, x1 - b.x0], [dx, b.x1 - x1], [-dz, z1 - b.z0], [dz, b.z1 - z1]]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const r = q / p;
+    if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
+  }
+  return true;
+}
