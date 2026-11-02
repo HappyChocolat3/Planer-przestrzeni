@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Planer przestrzeni</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand">🏠 Planer przestrzeni</div>
+    <div class="group">
+      <button data-act="new" title="Nowy, pusty projekt">Nowy</button>
+      <button data-act="sample" title="Wczytaj przykładowy projekt">Przykład</button>
+      <button data-act="open" title="Otwórz projekt z pliku .json">Otwórz</button>
+      <button data-act="save" title="Zapisz projekt do pliku .json">Zapisz</button>
+      <button data-act="png" title="Zapisz obraz wizualizacji">PNG</button>
+      <button data-act="csv" title="Lista elementów (CSV) – np. do wyceny">Lista CSV</button>
+    </div>
+    <div class="group seg" id="viewMode">
+      <button data-mode="3d" class="on">3D</button>
+      <button data-mode="2d">Rzut 2D</button>
+    </div>
+    <div class="group">
+      <button data-act="undo" title="Cofnij (Ctrl+Z)">↶</button>
+      <button data-act="redo" title="Ponów (Ctrl+Y)">↷</button>
+      <button data-act="camera" title="Wyśrodkuj widok">⌖</button>
+    </div>
+    <div class="group">
+      <button data-act="polyhaven" class="accent" title="Darmowe tekstury i modele 3D (CC0)">Baza Poly Haven</button>
+      <button data-act="import" title="Importuj własny model .glb/.gltf">Importuj model</button>
+    </div>
+    <label class="snap">Siatka
+      <select id="snap">
+        <option value="0">wył.</option>
+        <option value="1">1 cm</option>
+        <option value="5" selected>5 cm</option>
+        <option value="10">10 cm</option>
+        <option value="25">25 cm</option>
+      </select>
+    </label>
+    <button data-act="help" class="ghost" title="Pomoc">?</button>
+  </header>
+
+  <main class="layout">
+    <aside class="panel left">
+      <input id="catSearch" type="search" placeholder="Szukaj mebla…" />
+      <div id="catalog"></div>
+    </aside>
+    <section id="view" class="view">
+      <div class="hint" id="hint">Kliknij mebel z katalogu (lub przeciągnij go na plan) • przeciągaj meble myszą • R – obrót • Del – usuń</div>
+    </section>
+    <aside class="panel right" id="props"></aside>
+  </main>
+
+  <dialog id="phDialog" class="ph">
+    <form method="dialog" class="ph-head">
+      <strong>Poly Haven – darmowe zasoby CC0</strong>
+      <div class="seg" id="phType">
+        <button type="button" data-type="textures" class="on">Tekstury</button>
+        <button type="button" data-type="models">Modele 3D</button>
+      </div>
+      <select id="phCat"></select>
+      <input id="phSearch" type="search" placeholder="Szukaj…" />
+      <label id="phTargetWrap">Zastosuj do: <select id="phTarget"></select></label>
+      <button value="close" class="ghost">✕</button>
+    </form>
+    <div id="phStatus" class="ph-status"></div>
+    <div id="phGrid" class="ph-grid"></div>
+    <div class="ph-foot">Zasoby: <a href="https://polyhaven.com" target="_blank" rel="noopener">polyhaven.com</a> – licencja CC0 (domena publiczna). Wymaga połączenia z internetem.</div>
+  </dialog>
+
+  <dialog id="helpDialog" class="help">
+    <form method="dialog">
+      <h2>Jak korzystać</h2>
+      <ul>
+        <li><b>Dodawanie</b> – kliknij element w katalogu po lewej albo przeciągnij go na widok.</li>
+        <li><b>Przesuwanie</b> – złap mebel lewym przyciskiem myszy. Meble przyciągają się do siatki i ścian, drzwi i okna – do najbliższej ściany.</li>
+        <li><b>Kamera 3D</b> – lewy przycisk na pustym miejscu: obrót, prawy: przesuwanie, kółko: przybliżenie. W rzucie 2D: prawy – przesuwanie, kółko – zoom.</li>
+        <li><b>Edycja</b> – po zaznaczeniu mebla w panelu po prawej zmienisz wymiary, kolory, materiały i uchwyty.</li>
+        <li><b>Skróty</b>: <kbd>R</kbd> obrót o 90°, <kbd>Q</kbd>/<kbd>E</kbd> obrót o 15°, strzałki – przesuwanie, <kbd>Del</kbd> usuń, <kbd>Ctrl+D</kbd> duplikuj, <kbd>Ctrl+Z</kbd>/<kbd>Ctrl+Y</kbd> cofnij/ponów, <kbd>Esc</kbd> odznacz.</li>
+        <li><b>Baza Poly Haven</b> – setki darmowych tekstur (drewno, tkaniny, kamień, płytki…) i modeli 3D na licencji CC0. Tekstury trafiają na listę materiałów.</li>
+        <li><b>Własne modele</b> – „Importuj model” przyjmuje pliki .glb / .gltf (np. z Sketchfab, BlenderKit, stron producentów).</li>
+        <li>Projekt zapisuje się automatycznie w przeglądarce. „Zapisz” pobiera plik .json do przeniesienia na inny komputer.</li>
+      </ul>
+      <button>Zamknij</button>
+    </form>
+  </dialog>
+
+  <input type="file" id="fileOpen" accept=".json,application/json" hidden />
+  <input type="file" id="fileModel" accept=".glb,.gltf" hidden />
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
