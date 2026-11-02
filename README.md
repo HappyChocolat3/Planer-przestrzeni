@@ -12,9 +12,20 @@ npm run build    # wersja produkcyjna w katalogu dist/ (działa z dowolnego fold
 ```
 
 Publikacja online: w ustawieniach repozytorium *Settings → Pages → Source* wybierz **GitHub Actions** –
-workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdym pushu do `main`.
+workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdym pushu do `main`
+(można go też uruchomić ręcznie w zakładce *Actions*). Adres: `https://<użytkownik>.github.io/<repozytorium>/`.
 
 ## Funkcje
+
+- **Plan mieszkania jako podkład** – wczytaj rzut z **JPG / PNG / PDF** (z wielostronicowego PDF wybierasz stronę).
+  Skalę ustawiasz, klikając dwa końce odcinka o znanej długości i wpisując ją w cm. Plan można przesuwać,
+  obracać, zmieniać przezroczystość; każdy poziom (parter, antresola) może mieć własny plan.
+- **Ściany jako elementy** – rysujesz je po planie (narzędzie „✏ Ściany”, klawisz `W`, przyciąganie do 45°
+  i końców ścian), a każdą – także ściany obrysu – możesz zaznaczyć, przesunąć, zmienić jej długość, grubość,
+  wysokość, kolor albo **usunąć** (`Del`). Drzwi i okna same wycinają w ścianach otwory.
+- **Antresola / poziomy** – dowolna liczba poziomów z wysokością podłogi; katalog „Antresola i schody”:
+  podłoga antresoli (strop), schody proste pełne i ażurowe (wysokość dobiera się do poziomu wyżej),
+  balustrady prętowe i szklane. Widok: bieżący poziom, bieżący + niższe lub wszystkie.
 
 - **Pomieszczenie** – szerokość, długość, wysokość; materiał i kolor podłogi oraz ścian; ściany od strony kamery
   chowają się automatycznie, żeby było widać wnętrze.
@@ -43,6 +54,7 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
 | Akcja | Jak |
 |---|---|
 | Dodaj mebel | klik w katalogu albo przeciągnij na widok |
+| Rysuj ściany | `W` lub „✏ Ściany”; klikaj narożniki, `Esc` / podwójny klik kończy ciąg |
 | Przesuń | przeciągnij lewym przyciskiem / strzałki |
 | Obróć | `R` (90°), `Shift+R` (−90°), `Q` / `E` (15°) |
 | Usuń / duplikuj | `Del` / `Ctrl+D` |
@@ -60,5 +72,7 @@ src/
   furniture.js  – katalog parametrycznych mebli i uchwytów
   materials.js  – materiały, proceduralne tekstury, wykończenia uchwytów
   polyhaven.js  – klient API Poly Haven (CC0)
-  state.js      – projekt, historia zmian, autozapis
+  state.js      – projekt, poziomy, historia zmian, autozapis
+  assets.js     – duże pliki (plany, modele) w IndexedDB przeglądarki
+  planimport.js – wczytywanie planu z obrazu lub PDF (pdf.js)
 ```

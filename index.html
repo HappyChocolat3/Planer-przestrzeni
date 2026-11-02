@@ -15,8 +15,22 @@
       <button data-act="open" title="Otwórz projekt z pliku .json">Otwórz</button>
       <button data-act="save" title="Zapisz projekt do pliku .json">Zapisz</button>
       <button data-act="png" title="Zapisz obraz wizualizacji">PNG</button>
-      <button data-act="csv" title="Lista elementów (CSV) – np. do wyceny">Lista CSV</button>
+      <button data-act="csv" title="Lista elementów (CSV) – np. do wyceny">CSV</button>
     </div>
+    <div class="group">
+      <button data-act="plan" title="Wczytaj rzut mieszkania z JPG/PNG/PDF jako podkład">🗺 Plan</button>
+      <button data-act="drawWalls" title="Rysuj ściany (W)">✏ Ściany</button>
+    </div>
+    <label class="lvl">Poziom
+      <select id="level"></select>
+    </label>
+    <label class="lvl">Pokaż
+      <select id="levelView">
+        <option value="below" selected>bieżący + niższe</option>
+        <option value="current">tylko bieżący</option>
+        <option value="all">wszystkie</option>
+      </select>
+    </label>
     <div class="group seg" id="viewMode">
       <button data-mode="3d" class="on">3D</button>
       <button data-mode="2d">Rzut 2D</button>
@@ -48,6 +62,7 @@
       <div id="catalog"></div>
     </aside>
     <section id="view" class="view">
+      <div class="tool-hint" id="toolHint" hidden></div>
       <div class="hint" id="hint">Kliknij mebel z katalogu (lub przeciągnij go na plan) • przeciągaj meble myszą • R – obrót • Del – usuń</div>
     </section>
     <aside class="panel right" id="props"></aside>
@@ -70,6 +85,14 @@
     <div class="ph-foot">Zasoby: <a href="https://polyhaven.com" target="_blank" rel="noopener">polyhaven.com</a> – licencja CC0 (domena publiczna). Wymaga połączenia z internetem.</div>
   </dialog>
 
+  <dialog id="pdfDialog" class="ph pdf">
+    <form method="dialog" class="ph-head">
+      <strong>Wybierz stronę PDF z rzutem</strong>
+      <button value="close" class="ghost">✕</button>
+    </form>
+    <div id="pdfPages" class="ph-grid"></div>
+  </dialog>
+
   <dialog id="helpDialog" class="help">
     <form method="dialog">
       <h2>Jak korzystać</h2>
@@ -77,6 +100,9 @@
         <li><b>Dodawanie</b> – kliknij element w katalogu po lewej albo przeciągnij go na widok.</li>
         <li><b>Przesuwanie</b> – złap mebel lewym przyciskiem myszy. Meble przyciągają się do siatki i ścian, drzwi i okna – do najbliższej ściany.</li>
         <li><b>Kamera 3D</b> – lewy przycisk na pustym miejscu: obrót, prawy: przesuwanie, kółko: przybliżenie. W rzucie 2D: prawy – przesuwanie, kółko – zoom.</li>
+        <li><b>Plan mieszkania</b> – „🗺 Plan” wczytuje rzut z JPG, PNG lub PDF (z PDF wybierasz stronę). Potem kliknij dwa końce odcinka o znanej długości i wpisz ją w cm – plan dostanie prawdziwą skalę. „Przesuń plan” pozwala go dopasować.</li>
+        <li><b>Ściany</b> – „✏ Ściany” (klawisz <kbd>W</kbd>): klikaj kolejne narożniki po planie, podwójne kliknięcie lub <kbd>Esc</kbd> kończy. Każdą ścianę (także obrysu) zaznaczysz w rzucie 2D i usuniesz klawiszem <kbd>Del</kbd>. Drzwi i okna same wycinają w ścianach otwory.</li>
+        <li><b>Antresola</b> – w panelu „Poziomy” dodaj poziom na wysokości podłogi antresoli (lub po prostu wstaw z katalogu „Podłogę antresoli” – poziom utworzy się sam). Na każdym poziomie może być osobny plan. Schody dostają wysokość do następnego poziomu automatycznie.</li>
         <li><b>Edycja</b> – po zaznaczeniu mebla w panelu po prawej zmienisz wymiary, kolory, materiały i uchwyty.</li>
         <li><b>Skróty</b>: <kbd>R</kbd> obrót o 90°, <kbd>Q</kbd>/<kbd>E</kbd> obrót o 15°, strzałki – przesuwanie, <kbd>Del</kbd> usuń, <kbd>Ctrl+D</kbd> duplikuj, <kbd>Ctrl+Z</kbd>/<kbd>Ctrl+Y</kbd> cofnij/ponów, <kbd>Esc</kbd> odznacz.</li>
         <li><b>Baza Poly Haven</b> – setki darmowych tekstur (drewno, tkaniny, kamień, płytki…) i modeli 3D na licencji CC0. Tekstury trafiają na listę materiałów.</li>
@@ -88,6 +114,7 @@
   </dialog>
 
   <input type="file" id="fileOpen" accept=".json,application/json" hidden />
+ <input type="file" id="filePlan" accept="image/*,.pdf,application/pdf" hidden />
   <input type="file" id="fileModel" accept=".glb,.gltf" hidden />
   <script type="module" src="./src/main.js"></script>
 </body>

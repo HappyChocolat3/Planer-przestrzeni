@@ -5,11 +5,29 @@ const STORAGE_KEY = 'planer-przestrzeni-v1';
 
 export function defaultRoom() {
   return {
-    w: 500, d: 400, h: 260,
+    w: 500, d: 400, h: 260, x: 0, z: 0,
     floor: { mat: 'floorOak', color: '#ffffff' },
     walls: { mat: 'paint', color: '#efeae2' },
     wallMode: 'auto',
   };
+}
+
+export function defaultLevels() {
+  return [{ id: 'L0', name: 'Parter', elev: 0 }];
+}
+
+/** Cztery ściany obrysu dookoła podłogi (zwykłe elementy – można je usuwać i przesuwać). */
+export function perimeterWalls(room, level, t = 12) {
+  const cx = room.x ?? 0, cz = room.z ?? 0;
+  const W = room.w, D = room.d, H = room.h;
+  const parts = { body: { ...room.walls } };
+  const mk = (name, x, z, rot, w) => newItem('wall', { name, x, z, rot, w, d: t, h: H, level, parts });
+  return [
+    mk('Ściana górna', cx, cz - D / 2 - t / 2, 0, W + 2 * t),
+    mk('Ściana dolna', cx, cz + D / 2 + t / 2, 0, W + 2 * t),
+    mk('Ściana lewa', cx - W / 2 - t / 2, cz, 90, D + 2 * t),
+    mk('Ściana prawa', cx + W / 2 + t / 2, cz, 90, D + 2 * t),
+  ];
 }
 
 export function sampleProject() {
@@ -39,11 +57,25 @@ export function sampleProject() {
   add('floorLamp', { x: 40, z: 165 });
   add('window', { x: -90, z: 206, rot: 180, w: 160 });
   add('door', { x: 256, z: 120, rot: 90 });
-  return { version: 1, name: 'Mój projekt', room: defaultRoom(), items, phTextures: [] };
+  const room = defaultRoom();
+  return { version: 2, name: 'Mój projekt', room, levels: defaultLevels(), items: [...perimeterWalls(room, 'L0'), ...items.map((i) => ({ ...i, level: 'L0' }))], phTextures: [] };
 }
 
 export function emptyProject() {
-  return { version: 1, name: 'Nowy projekt', room: defaultRoom(), items: [], phTextures: [] };
+  const room = defaultRoom();
+  return { version: 2, name: 'Nowy projekt', room, levels: defaultLevels(), items: perimeterWalls(room, 'L0'), phTextures: [] };
+}
+
+/** Uzupełnia projekty z wcześniejszej wersji (bez poziomów i ścian jako elementów). */
+export function migrate(p) {
+  if (!p.levels?.length) p.levels = defaultLevels();
+  const first = p.levels[0].id;
+  for (const it of p.items) it.level ??= first;
+  if ((p.version ?? 1) < 2) {
+    p.items.unshift(...perimeterWalls(p.room, first));
+    p.version = 2;
+  }
+  return p;
 }
 
 export class Store {
@@ -60,7 +92,7 @@ export class Store {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const p = JSON.parse(raw);
-      return p?.room && Array.isArray(p.items) ? p : null;
+      return p?.room && Array.isArray(p.items) ? migrate(p) : null;
     } catch {
       return null;
     }

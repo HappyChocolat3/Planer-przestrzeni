@@ -1,4 +1,6 @@
-import { Store, emptyProject, sampleProject } from './state.js';
+import { Store, emptyProject, sampleProject, migrate, perimeterWalls } from './state.js';
+import { putAsset, resolveAsset, collectAssets, importAssets } from './assets.js';
+import { openPdf, imageToPlan, isPdf } from './planimport.js';
 import { Viewer } from './scene.js';
 import { CATALOG, newItem, catalogByCategory } from './furniture.js';
 import { MATERIALS, HANDLE_TYPES, HANDLE_FINISHES, materialOptions, materialLabel, defaultColorFor, PH_PREFIX } from './materials.js';
@@ -54,7 +56,22 @@ function renderCatalog(filter = '') {
 $('#catSearch').addEventListener('input', (e) => renderCatalog(e.target.value));
 
 function addItem(type, at) {
-  const item = newItem(type);
+  const item = newItem(type, { level: viewer.levelId });
+  const cur = viewer.level();
+  const upper = () => [...store.project.levels].sort((a, b) => a.elev - b.elev).find((l) => l.elev > cur.elev);
+  if (type === 'slab') {
+    // podłoga antresoli trafia na poziom wyżej (tworzymy go, jeśli nie istnieje)
+    let up = cur.elev > 0 ? cur : upper();
+    if (!up) {
+      up = { id: 'L' + Date.now().toString(36), name: 'Antresola', elev: 260 };
+      store.project.levels.push(up);
+      toast('Dodano poziom „Antresola” (+260 cm) – wysokość zmienisz w panelu Poziomy');
+    }
+    item.level = up.id;
+    switchLevel(up.id);
+  }
+  if ((type === 'stairs' || type === 'stairsOpen') && upper()) item.h = upper().elev - cur.elev;
+  if (type === 'wall') item.h = store.project.room.h;
   const pos = at ?? freeSpot(item);
   Object.assign(item, viewer.constrain(item, pos.x, pos.z));
   store.project.items.push(item);
@@ -71,11 +88,12 @@ function extents(it) {
 /** Najbliższe środka pokoju wolne miejsce (bez kolizji z innymi meblami). */
 function freeSpot(item) {
   const room = store.project.room;
-  const others = store.project.items.filter((t) => t.type !== 'rug' && t.type !== 'door' && t.type !== 'window');
+  const others = store.project.items.filter((t) => t.level === item.level && t.type !== 'rug' && t.type !== 'door' && t.type !== 'window');
   const [hx, hz] = extents(item);
   const cands = [];
-  for (let x = -room.w / 2 + hx; x <= room.w / 2 - hx; x += 10) for (let z = -room.d / 2 + hz; z <= room.d / 2 - hz; z += 10) cands.push([x, z]);
-  cands.sort((p, q) => Math.hypot(...p) - Math.hypot(...q));
+  const cx = room.x ?? 0, cz = room.z ?? 0;
+  for (let x = cx - room.w / 2 + hx; x <= cx + room.w / 2 - hx; x += 10) for (let z = cz - room.d / 2 + hz; z <= cz + room.d / 2 - hz; z += 10) cands.push([x, z]);
+  cands.sort((p, q) => Math.hypot(p[0] - cx, p[1] - cz) - Math.hypot(q[0] - cx, q[1] - cz));
   for (const [x, z] of cands) {
     const free = others.every((t) => {
       const [tx, tz] = extents(t);
@@ -83,7 +101,7 @@ function freeSpot(item) {
     });
     if (free) return { x, z };
   }
-  return { x: 0, z: 0 };
+  return { x: cx, z: cz };
 }
 
 // przeciąganie z katalogu na widok
@@ -178,10 +196,11 @@ function renderProps() {
 
   const sec = (title, ...kids) => root.append(h('section', { class: 'sec' }, h('h4', {}, title), ...kids));
 
+  const isWall = item.type === 'wall';
   sec('Wymiary',
     h('div', { class: 'grid3' },
-      numField('Szer.', item.w, (v) => { item.w = v; fixPos(item); rebuild(); renderProps(); }, { min: 1, unit: 'cm' }),
-      numField('Głęb.', item.d, (v) => { item.d = v; fixPos(item); rebuild(); renderProps(); }, { min: 1, unit: 'cm' }),
+      numField(isWall ? 'Długość' : 'Szer.', item.w, (v) => { item.w = v; fixPos(item); rebuild(); renderProps(); }, { min: 1, unit: 'cm' }),
+      numField(isWall ? 'Grubość' : 'Głęb.', item.d, (v) => { item.d = v; fixPos(item); rebuild(); renderProps(); }, { min: 1, unit: 'cm' }),
       numField('Wys.', item.h, (v) => { item.h = v; rebuild(); renderProps(); }, { min: 1, unit: 'cm' }),
     ),
     presetButtons(item, rebuild),
@@ -191,8 +210,11 @@ function renderProps() {
       numField('X', item.x, (v) => { item.x = v; rebuild(); }, { unit: 'cm' }),
       numField('Z', item.z, (v) => { item.z = v; rebuild(); }, { unit: 'cm' }),
       numField('Obrót', item.rot, (v) => { item.rot = ((v % 360) + 360) % 360; rebuild(); }, { unit: '°', step: 15 }),
-      numField('Od podłogi', item.elev ?? 0, (v) => { item.elev = v; rebuild(); }, { min: 0, unit: 'cm' }),
+      numField('Od podłogi', item.elev ?? 0, (v) => { item.elev = v; rebuild(); }, { min: item.type === 'slab' ? -1000 : 0, unit: 'cm' }),
     ),
+    store.project.levels.length > 1 ? h('label', { class: 'field' }, h('span', {}, 'Poziom'),
+      h('select', { onchange: (e) => { const old = item.level; item.level = e.target.value; viewer.rebuildItem(item.id); viewer.rebuildWalls(old); store.commit(); switchLevel(item.level); viewer.select(item.id); } },
+        store.project.levels.map((l) => h('option', { value: l.id, selected: l.id === item.level }, l.name)))) : null,
     h('label', { class: 'check' },
       h('input', { type: 'checkbox', checked: !!item.locked, onchange: (e) => { item.locked = e.target.checked; store.commit(); } }),
       ' Zablokuj (nie przesuwaj myszą)'),
@@ -209,8 +231,8 @@ function renderProps() {
         item.parts[k] ??= { mat: s.mat, color: s.color };
         return partEditor(s.label, item.parts[k], rebuild);
       }),
-      h('button', { class: 'small', onclick: () => applyToSameType(item) }, 'Zastosuj kolory/uchwyty do wszystkich: ' + def.label),
-      h('button', { class: 'small', onclick: () => applyFrontsToAll(item) }, 'Zastosuj fronty i uchwyty do wszystkich szafek'),
+      h('button', { class: 'small', onclick: () => applyToSameType(item) }, (isWall ? 'Zastosuj do wszystkich ścian' : 'Zastosuj kolory/uchwyty do wszystkich: ' + def.label)),
+      def.handles ? h('button', { class: 'small', onclick: () => applyFrontsToAll(item) }, 'Zastosuj fronty i uchwyty do wszystkich szafek') : null,
     );
   }
 
@@ -272,7 +294,7 @@ function applyToSameType(src) {
     if (it.type !== src.type || it.id === src.id) continue;
     it.parts = structuredClone(src.parts);
     if (src.handle) it.handle = { ...src.handle };
-    viewer.rebuildItem(it.id);
+    viewer.rebuildItem(it.id, false);
   }
   store.commit();
 }
@@ -290,37 +312,264 @@ function applyFrontsToAll(src) {
 
 function renderRoomProps(root) {
   const room = store.project.room;
+  const lvl = viewer.level();
   const rebuild = (done = true) => {
     viewer.rebuildRoom();
     if (done) store.commit();
   };
+  const sec = (title, ...kids) => root.append(h('section', { class: 'sec' }, h('h4', {}, title), ...kids));
   root.append(h('div', { class: 'props-head' }, h('input', { class: 'name', value: store.project.name, onchange: (e) => { store.project.name = e.target.value; store.commit(); } })));
-  root.append(h('section', { class: 'sec' }, h('h4', {}, 'Pomieszczenie'),
-    h('div', { class: 'grid3' },
-      numField('Szer.', room.w, (v) => { room.w = v; rebuild(); viewer.resetCamera(); }, { min: 100, max: 3000, unit: 'cm' }),
-      numField('Dł.', room.d, (v) => { room.d = v; rebuild(); viewer.resetCamera(); }, { min: 100, max: 3000, unit: 'cm' }),
-      numField('Wys.', room.h, (v) => { room.h = v; rebuild(); }, { min: 180, max: 600, unit: 'cm' })),
-    h('label', { class: 'field' }, h('span', {}, 'Ściany'),
+
+  // --- plan mieszkania ---
+  const plan = lvl.plan;
+  sec(`Plan mieszkania – ${lvl.name}`,
+    h('p', { class: 'note' }, 'Wczytaj rzut z pliku JPG, PNG lub PDF, ustaw skalę i obrysuj ściany narzędziem „Rysuj ściany”.'),
+    h('button', { class: 'small primary', onclick: () => $('#filePlan').click() }, plan ? '🗺 Wczytaj inny plan…' : '🗺 Wczytaj plan (JPG / PNG / PDF)…'),
+    plan ? [
+      h('div', { class: 'row-btns' },
+        h('button', { class: viewer.tool === 'calib' ? 'on' : '', onclick: () => startTool('calib') }, '📏 Ustaw skalę'),
+        h('button', { class: viewer.tool === 'plan' ? 'on' : '', onclick: () => startTool(viewer.tool === 'plan' ? null : 'plan') }, '✋ Przesuń plan')),
+      h('div', { class: 'grid2' },
+        numField('Obrót planu', plan.rot ?? 0, (v) => { plan.rot = v; viewer.rebuildPlans(); store.commit(); }, { unit: '°', step: 0.5 }),
+        numField('Skala', +(plan.scale * 100).toFixed(3), (v) => { plan.scale = v / 100; viewer.rebuildPlans(); store.commit(); }, { unit: 'cm/100px', step: 0.1, min: 0.001 })),
+      h('label', { class: 'field' }, h('span', {}, `Przezroczystość planu: ${Math.round((plan.opacity ?? 0.7) * 100)}%`),
+        h('input', { type: 'range', min: 0.1, max: 1, step: 0.05, value: plan.opacity ?? 0.7, oninput: (e) => { plan.opacity = +e.target.value; viewer.planGroup.children.forEach((m) => m.userData.levelId === lvl.id && (m.material.opacity = plan.opacity)); }, onchange: () => { store.commit(); renderProps(); } })),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!plan.show3d, onchange: (e) => { plan.show3d = e.target.checked; viewer.rebuildPlans(); store.commit(); } }), ' Pokaż plan także w widoku 3D'),
+      h('button', { class: 'small', onclick: fitFloorToPlan }, 'Dopasuj podłogę do planu'),
+      h('button', { class: 'small danger', onclick: () => { delete lvl.plan; viewer.rebuildPlans(); store.commit(); renderProps(); } }, 'Usuń plan'),
+    ] : null,
+  );
+
+  // --- ściany ---
+  sec('Ściany',
+    h('div', { class: 'row-btns' },
+      h('button', { class: viewer.tool === 'wall' ? 'on' : '', onclick: () => startTool(viewer.tool === 'wall' ? null : 'wall') }, '✏ Rysuj ściany'),
+      h('button', { onclick: addPerimeter }, '▭ Ściany obrysu')),
+    h('div', { class: 'grid2' },
+      numField('Grubość nowych', viewer.wallThickness, (v) => { viewer.wallThickness = v; }, { min: 1, unit: 'cm' }),
+      numField('Wysokość', room.h, (v) => { room.h = v; store.commit(); renderProps(); }, { min: 100, max: 1500, unit: 'cm' })),
+    h('button', { class: 'small', onclick: () => { forWalls((w) => (w.h = room.h)); } }, 'Ustaw tę wysokość wszystkim ścianom poziomu'),
+    h('p', { class: 'note' }, 'Ścianę usuwasz jak mebel: kliknij ją (w rzucie 2D) i wciśnij Del. Drzwi i okna same wycinają otwory.'),
+    h('label', { class: 'field' }, h('span', {}, 'Widok ścian w 3D'),
       h('select', { onchange: (e) => { room.wallMode = e.target.value; store.commit(); } },
-        [['auto', 'automatycznie ukrywaj przednie'], ['show', 'zawsze pokazuj'], ['hidden', 'ukryj wszystkie']].map(([v, l]) => h('option', { value: v, selected: room.wallMode === v }, l)))),
-    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: viewer.showGrid, onchange: (e) => { viewer.showGrid = e.target.checked; viewer.grid.visible = viewer.mode === '2d' || viewer.showGrid; } }), ' Siatka 50 cm w widoku 3D'),
-  ));
-  root.append(h('section', { class: 'sec' }, h('h4', {}, 'Podłoga i ściany'),
+        [['auto', 'ukrywaj te, które zasłaniają widok'], ['low', 'obniżone (1 m)'], ['show', 'zawsze pokazuj'], ['hidden', 'ukryj wszystkie']].map(([v, l]) => h('option', { value: v, selected: room.wallMode === v }, l)))),
+    h('button', { class: 'small danger', onclick: removeAllWalls }, 'Usuń wszystkie ściany tego poziomu'),
+  );
+
+  // --- poziomy ---
+  sec('Poziomy (antresola)',
+    store.project.levels.map((l) => h('div', { class: 'level-row' + (l.id === lvl.id ? ' on' : '') },
+      h('input', { class: 'lv-name', value: l.name, onchange: (e) => { l.name = e.target.value; store.commit(); renderLevels(); } }),
+      h('input', { class: 'lv-elev', type: 'number', value: l.elev, title: 'Wysokość podłogi poziomu [cm]', onchange: (e) => { l.elev = +e.target.value || 0; store.commit(); viewer.rebuildRoom(); viewer.rebuildAll(); } }),
+      h('span', { class: 'unit' }, 'cm'),
+      h('button', { title: 'Przejdź do poziomu', onclick: () => switchLevel(l.id) }, '→'),
+      store.project.levels.length > 1 ? h('button', { title: 'Usuń poziom', class: 'danger', onclick: () => removeLevel(l) }, '✕') : null)),
+    h('button', { class: 'small', onclick: addLevel }, '+ Dodaj antresolę / piętro'),
+    h('p', { class: 'note' }, 'Antresola: dodaj poziom na wysokości jej podłogi, potem z katalogu „Antresola i schody” wstaw podłogę antresoli, schody i balustrady. Ściany parteru możesz podwyższyć (np. 500 cm) dla przestrzeni o podwójnej wysokości.'),
+  );
+
+  sec('Podłoga parteru',
+    h('div', { class: 'grid2' },
+      numField('Szer.', room.w, (v) => { room.w = v; rebuild(); viewer.resetCamera(); renderProps(); }, { min: 100, max: 5000, unit: 'cm' }),
+      numField('Dł.', room.d, (v) => { room.d = v; rebuild(); viewer.resetCamera(); renderProps(); }, { min: 100, max: 5000, unit: 'cm' })),
     partEditor('Podłoga', room.floor, rebuild),
-    partEditor('Ściany', room.walls, rebuild)));
-  root.append(h('section', { class: 'sec' }, h('h4', {}, `Elementy (${store.project.items.length})`), h('div', { id: 'itemList', class: 'item-list' })));
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: viewer.showGrid, onchange: (e) => { viewer.showGrid = e.target.checked; viewer.grid.visible = viewer.mode === '2d' || viewer.showGrid; } }), ' Siatka 50 cm w widoku 3D'));
+  sec('Kolor ścian (wszystkie)',
+    partEditor('Ściany', room.walls, (done) => { forWalls((w) => (w.parts.body = { ...room.walls }), true, done); }));
+
+  root.append(h('section', { class: 'sec' }, h('h4', {}, `Elementy – ${lvl.name}`), h('div', { id: 'itemList', class: 'item-list' })));
   renderList();
+}
+
+/** Zmienia wszystkie ściany (bieżącego poziomu lub wszystkich). */
+function forWalls(fn, allLevels = false, done = true) {
+  for (const w of store.project.items) {
+    if (w.type !== 'wall' || (!allLevels && w.level !== viewer.levelId)) continue;
+    fn(w);
+    viewer.rebuildItem(w.id, false);
+  }
+  if (done) store.commit();
 }
 
 function renderList() {
   const list = $('#itemList');
   if (!list) return;
   list.innerHTML = '';
-  for (const it of store.project.items) {
+  const items = store.project.items.filter((it) => it.level === viewer.levelId);
+  for (const it of items) {
     list.append(h('div', { class: 'li' },
       h('button', { class: 'li-name', onclick: () => viewer.select(it.id) }, it.name, h('small', {}, ` ${it.w}×${it.d}×${it.h}`)),
       h('button', { class: 'li-del', title: 'Usuń', onclick: () => { removeItem(it.id); } }, '✕')));
   }
+}
+
+// ---------- poziomy ----------
+function renderLevels() {
+  const sel = $('#level');
+  sel.innerHTML = '';
+  for (const l of store.project.levels) sel.append(h('option', { value: l.id, selected: l.id === viewer.levelId }, `${l.name} (${l.elev >= 0 ? '+' : ''}${l.elev} cm)`));
+  $('#levelView').parentElement.style.display = store.project.levels.length > 1 ? '' : 'none';
+}
+
+function switchLevel(id) {
+  viewer.setLevel(id);
+  renderLevels();
+  renderProps();
+}
+
+function addLevel() {
+  const top = Math.max(...store.project.levels.map((l) => l.elev));
+  const l = { id: 'L' + Date.now().toString(36), name: store.project.levels.length === 1 ? 'Antresola' : `Poziom ${store.project.levels.length + 1}`, elev: top + 260 };
+  store.project.levels.push(l);
+  store.commit();
+  switchLevel(l.id);
+  toast(`Dodano poziom „${l.name}” – ustaw wysokość jego podłogi, potem wstaw „Podłogę antresoli”`);
+}
+
+function removeLevel(l) {
+  const n = store.project.items.filter((i) => i.level === l.id).length;
+  if (!confirm(`Usunąć poziom „${l.name}”${n ? ` razem z ${n} elementami` : ''}?`)) return;
+  store.project.items = store.project.items.filter((i) => i.level !== l.id);
+  store.project.levels = store.project.levels.filter((x) => x !== l);
+  store.commit();
+  viewer.levelId = store.project.levels[0].id;
+  viewer.rebuildAll();
+  switchLevel(viewer.levelId);
+}
+
+// ---------- ściany i plan ----------
+function startTool(tool) {
+  if (tool && viewer.mode !== '2d') setViewMode('2d');
+  viewer.setTool(tool);
+  document.body.classList.toggle('tool-on', !!tool);
+  const msg = {
+    wall: 'Rysowanie ścian: klikaj kolejne narożniki (przyciąganie do 45° i końców ścian, Shift = dowolny kąt). Podwójne kliknięcie / prawy przycisk / Esc kończy ciąg, drugi Esc wyłącza narzędzie.',
+    calib: 'Skala: kliknij początek i koniec odcinka o znanej długości (np. ściany z wymiarem na planie).',
+    plan: 'Przeciągnij plan myszą, aby dopasować go do ścian. Esc kończy.',
+  }[tool];
+  $('#toolHint').textContent = msg ?? '';
+  $('#toolHint').hidden = !msg;
+  $('[data-act="drawWalls"]').classList.toggle('on', tool === 'wall');
+  renderProps();
+}
+
+viewer.onWallDrawn = (a, b) => {
+  const t = viewer.wallThickness;
+  const L = Math.hypot(b.x - a.x, b.z - a.z);
+  const rot = Math.round(((Math.atan2(b.z - a.z, b.x - a.x) * 180) / Math.PI) * 10) / 10;
+  const w = newItem('wall', {
+    name: `Ściana ${Math.round(L)} cm`, level: viewer.levelId,
+    x: Math.round(((a.x + b.x) / 2) * 10) / 10, z: Math.round(((a.z + b.z) / 2) * 10) / 10,
+    rot: (rot + 360) % 360, w: Math.round(L + t), d: t, h: store.project.room.h,
+    parts: { body: { ...store.project.room.walls } },
+  });
+  store.project.items.push(w);
+  store.commit('add');
+  viewer.rebuildItem(w.id);
+};
+
+viewer.onCalibrate = (a, b) => {
+  const plan = viewer.level().plan;
+  startTool(null);
+  if (!plan) return;
+  const measured = Math.hypot(b.x - a.x, b.z - a.z);
+  const ans = prompt(`Zmierzony odcinek ma teraz ${Math.round(measured)} cm.\nPodaj jego rzeczywistą długość w cm:`);
+  const real = parseFloat(String(ans ?? '').replace(',', '.'));
+  if (!real || !measured) return;
+  const k = real / measured;
+  // skalowanie względem pierwszego punktu – ten punkt planu zostaje w miejscu
+  plan.scale *= k;
+  plan.x = a.x + (plan.x - a.x) * k;
+  plan.z = a.z + (plan.z - a.z) * k;
+  viewer.rebuildPlans();
+  store.commit();
+  renderProps();
+  toast(`Skala ustawiona: 100 px = ${(plan.scale * 100).toFixed(1)} cm. Teraz możesz dopasować podłogę i obrysować ściany.`);
+};
+
+viewer.onToolDone = () => {
+  store.commit();
+  renderProps();
+};
+
+function fitFloorToPlan() {
+  const p = viewer.level().plan;
+  if (!p) return;
+  const room = store.project.room;
+  const a = (p.rot ?? 0) * Math.PI / 180;
+  const w = p.pxW * p.scale, d = p.pxH * p.scale;
+  room.w = Math.round(Math.abs(Math.cos(a)) * w + Math.abs(Math.sin(a)) * d);
+  room.d = Math.round(Math.abs(Math.sin(a)) * w + Math.abs(Math.cos(a)) * d);
+  room.x = Math.round(p.x);
+  room.z = Math.round(p.z);
+  viewer.rebuildRoom();
+  store.commit();
+  renderProps();
+}
+
+function addPerimeter() {
+  const walls = perimeterWalls(store.project.room, viewer.levelId);
+  for (const w of walls) w.h = store.project.room.h;
+  store.project.items.push(...walls);
+  store.commit('add');
+  viewer.rebuildAll();
+  renderProps();
+}
+
+function removeAllWalls() {
+  const n = store.project.items.filter((i) => i.type === 'wall' && i.level === viewer.levelId).length;
+  if (!n || !confirm(`Usunąć wszystkie ściany (${n}) na poziomie „${viewer.level().name}”?`)) return;
+  store.project.items = store.project.items.filter((i) => !(i.type === 'wall' && i.level === viewer.levelId));
+  viewer.select(null);
+  viewer.rebuildAll();
+  store.commit('remove');
+  renderProps();
+}
+
+async function loadPlanFile(file) {
+  try {
+    let img;
+    if (isPdf(file)) {
+      toast('Otwieranie PDF…');
+      const pdf = await openPdf(file);
+      const page = pdf.pages > 1 ? await pickPdfPage(pdf) : 1;
+      if (!page) return;
+      toast('Renderowanie strony ' + page + '…');
+      img = await pdf.render(page);
+    } else {
+      img = await imageToPlan(file);
+    }
+    const src = await putAsset(img.src);
+    const lvl = viewer.level();
+    const room = store.project.room;
+    // wstępna skala: plan mniej więcej tak szeroki jak podłoga; potem użytkownik kalibruje
+    const scale = Math.max(room.w * 1.2, 800) / img.w;
+    lvl.plan = { src, pxW: img.w, pxH: img.h, scale, x: room.x ?? 0, z: room.z ?? 0, rot: 0, opacity: 0.75, show3d: false, name: file.name };
+    store.commit();
+    await viewer.rebuildPlans();
+    viewer.fitOrtho();
+    startTool('calib');
+    toast('Plan wczytany. Teraz ustaw skalę: kliknij dwa końce odcinka o znanej długości.');
+  } catch (err) {
+    console.error(err);
+    toast('Nie udało się wczytać planu: ' + err.message, true);
+  }
+}
+
+function pickPdfPage(pdf) {
+  const dlg = $('#pdfDialog');
+  const grid = $('#pdfPages');
+  grid.innerHTML = '';
+  return new Promise((ok) => {
+    let picked = null;
+    for (let i = 1; i <= Math.min(pdf.pages, 40); i++) {
+      const img = h('img', { alt: 'Strona ' + i });
+      pdf.thumb(i).then((u) => (img.src = u)).catch(() => {});
+      grid.append(h('button', { class: 'ph-card', onclick: () => { picked = i; dlg.close(); } }, img, h('span', {}, 'Strona ' + i)));
+    }
+    dlg.addEventListener('close', () => ok(picked), { once: true });
+    dlg.showModal();
+  });
 }
 
 // ---------- akcje ----------
@@ -335,8 +584,10 @@ function rotate(deg) {
 }
 
 function removeItem(id) {
+  const it = store.item(id);
   store.project.items = store.project.items.filter((i) => i.id !== id);
   viewer.removeItemObject(id);
+  if (it && (it.type === 'wall' || it.type === 'door' || it.type === 'window')) viewer.rebuildWalls(it.level);
   if (viewer.selectedId === id) viewer.select(null);
   store.commit('remove');
   renderProps();
@@ -380,6 +631,9 @@ viewer.onItemMoved = (item, done) => {
 
 store.onChange((kind) => {
   if (kind === 'replace') {
+    migrate(store.project);
+    if (!store.project.levels.some((l) => l.id === viewer.levelId)) viewer.levelId = store.project.levels[0].id;
+    renderLevels();
     loadPhTextures().finally(() => {
       viewer.rebuildRoom();
       viewer.rebuildAll();
@@ -400,7 +654,12 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'r') rotate(e.shiftKey ? -90 : 90);
   else if (k === 'q') rotate(-15);
   else if (k === 'e') rotate(15);
-  else if (k === 'escape') viewer.select(null);
+  else if (k === 'escape') {
+    if (viewer.tool === 'wall' && viewer.drawStart) viewer.setTool('wall'); // koniec bieżącego ciągu ścian
+    else if (viewer.tool) startTool(null);
+    else viewer.select(null);
+  }
+  else if (k === 'w' && !ctrl) startTool(viewer.tool === 'wall' ? null : 'wall');
   else if (e.key.startsWith('Arrow') && viewer.selectedId) {
     e.preventDefault();
     const [dx, dz] = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
@@ -421,8 +680,9 @@ const actions = {
   new: () => confirm('Utworzyć nowy, pusty projekt? Bieżący możesz najpierw zapisać.') && (viewer.select(null), store.replace(emptyProject())),
   sample: () => confirm('Wczytać projekt przykładowy (zastąpi bieżący)?') && (viewer.select(null), store.replace(sampleProject())),
   open: () => $('#fileOpen').click(),
-  save: () => {
-    const blob = new Blob([JSON.stringify(store.project, null, 2)], { type: 'application/json' });
+  save: async () => {
+    const assets = await collectAssets(store.project);
+    const blob = new Blob([JSON.stringify({ ...store.project, assets })], { type: 'application/json' });
     download(safeName() + '.json', URL.createObjectURL(blob));
   },
   png: () => {
@@ -448,14 +708,25 @@ const actions = {
   polyhaven: () => openPolyHaven(),
   import: () => $('#fileModel').click(),
   help: () => $('#helpDialog').showModal(),
+  plan: () => $('#filePlan').click(),
+  drawWalls: () => startTool(viewer.tool === 'wall' ? null : 'wall'),
 };
 document.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => actions[b.dataset.act]()));
 
+function setViewMode(mode) {
+  document.querySelectorAll('#viewMode button').forEach((x) => x.classList.toggle('on', x.dataset.mode === mode));
+  viewer.setMode(mode);
+}
 $('#viewMode').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-mode]');
-  if (!b) return;
-  document.querySelectorAll('#viewMode button').forEach((x) => x.classList.toggle('on', x === b));
-  viewer.setMode(b.dataset.mode);
+  if (b) setViewMode(b.dataset.mode);
+});
+$('#level').addEventListener('change', (e) => switchLevel(e.target.value));
+$('#levelView').addEventListener('change', (e) => (viewer.levelView = e.target.value));
+$('#filePlan').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (f) loadPlanFile(f);
 });
 $('#snap').addEventListener('change', (e) => (viewer.snap = +e.target.value));
 
@@ -466,8 +737,11 @@ $('#fileOpen').addEventListener('change', async (e) => {
   try {
     const p = JSON.parse(await f.text());
     if (!p.room || !Array.isArray(p.items)) throw new Error('To nie jest plik projektu');
+    await importAssets(p.assets);
+    delete p.assets;
     viewer.select(null);
-    store.replace(p);
+    viewer.setTool(null);
+    store.replace(migrate(p));
   } catch (err) {
     alert('Nie udało się otworzyć pliku: ' + err.message);
   }
@@ -485,8 +759,8 @@ $('#fileModel').addEventListener('change', async (e) => {
     r.onload = () => ok(r.result);
     r.readAsDataURL(f);
   });
-  if (dataUrl.length > 4e6) alert('Model jest duży – zapisze się w pliku projektu, ale może nie zmieścić się w pamięci przeglądarki (autozapis).');
-  addModel(dataUrl, f.name.replace(/\.(glb|gltf)$/i, ''), 'Własny plik');
+  const ref = await putAsset(dataUrl);
+  addModel(ref, f.name.replace(/\.(glb|gltf)$/i, ''), 'Własny plik');
 });
 
 // ---------- modele glTF ----------
@@ -500,7 +774,7 @@ function resetModelSize(item, gltf) {
 const pendingModels = new Map();
 viewer.requestModel = (item) => {
   if (pendingModels.has(item.src)) return;
-  pendingModels.set(item.src, PH.loadGLTF(item.src)
+  pendingModels.set(item.src, resolveAsset(item.src).then((url) => PH.loadGLTF(url))
     .then((g) => {
       viewer.gltfCache.set(item.src, g);
       for (const it of store.project.items) if (it.src === item.src) viewer.rebuildItem(it.id);
@@ -511,11 +785,11 @@ viewer.requestModel = (item) => {
 async function addModel(src, name, credit, page) {
   try {
     toast('Wczytywanie modelu…');
-    const gltf = await PH.loadGLTF(src);
+    const gltf = await PH.loadGLTF(await resolveAsset(src));
     viewer.gltfCache.set(src, gltf);
-    const item = { id: crypto.randomUUID?.() ?? String(Math.random()).slice(2), type: 'gltf', name, src, credit, page, x: 0, z: 0, rot: 0, elev: 0, w: 100, d: 100, h: 100, parts: {}, tint: '#ffffff' };
+    const item = { id: crypto.randomUUID?.() ?? String(Math.random()).slice(2), type: 'gltf', level: viewer.levelId, name, src, credit, page, x: store.project.room.x ?? 0, z: store.project.room.z ?? 0, rot: 0, elev: 0, w: 100, d: 100, h: 100, parts: {}, tint: '#ffffff' };
     resetModelSize(item, gltf);
-    Object.assign(item, viewer.constrain(item, 0, 0));
+    Object.assign(item, viewer.constrain(item, item.x, item.z));
     store.project.items.push(item);
     store.commit('add');
     viewer.rebuildItem(item.id);
@@ -605,7 +879,7 @@ async function pickPh(a, card) {
     const target = $('#phTarget').value;
     const key = PH_PREFIX + a.id;
     if (target === 'floor') { store.project.room.floor = { mat: key, color: '#ffffff' }; viewer.rebuildRoom(); }
-    else if (target === 'walls') { store.project.room.walls = { mat: key, color: '#ffffff' }; viewer.rebuildRoom(); }
+    else if (target === 'walls') { store.project.room.walls = { mat: key, color: '#ffffff' }; forWalls((w) => (w.parts.body = { mat: key, color: '#ffffff' }), true, false); }
     else if (target.startsWith('item:')) {
       const it = store.item(viewer.selectedId);
       if (it) { it.parts[target.slice(5)] = { mat: key, color: '#ffffff' }; viewer.rebuildItem(it.id); }
@@ -648,6 +922,7 @@ function toast(msg, err = false) {
 }
 
 // ---------- start ----------
+renderLevels();
 renderCatalog();
 renderProps();
 viewer.resetCamera();

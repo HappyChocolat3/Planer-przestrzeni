@@ -192,6 +192,49 @@ const kitchenBase = (item, m) => {
   return { g, ch, cd, plinth, z: cz + cd / 2 };
 };
 
+
+/** Schody proste wchodzące w stronę -Z (pierwszy stopień z przodu, przy +Z). */
+function buildStairs(item, m, open) {
+  const g = new THREE.Group();
+  const { w, d, h } = item.m;
+  const n = item.p?.steps ?? 15;
+  const rise = h / n, run = d / n, tt = 0.04;
+  for (let i = 0; i < n; i++) {
+    const top = rise * (i + 1);
+    const zc = d / 2 - run * (i + 0.5);
+    if (open) {
+      addBox(g, m('treads'), w, tt, run + 0.02, 0, top - tt, zc);
+    } else {
+      addBox(g, m('body'), w, top - tt, run, 0, 0, zc);
+      addBox(g, m('treads'), w + 0.01, tt, run + 0.025, 0, top - tt, zc + 0.0125);
+    }
+  }
+  const len = Math.hypot(d, h), ang = Math.atan2(h, d);
+  if (open) {
+    // dwie belki policzkowe
+    for (const s of [-1, 1]) {
+      const beam = addBox(g, m('body'), 0.05, 0.22, len, s * (w / 2 + 0.025), 0, 0);
+      beam.rotation.x = ang;
+      beam.position.set(s * (w / 2 + 0.025), h / 2 - 0.11 + 0.02, 0);
+    }
+  }
+  const rails = item.p?.rails ?? 1;
+  for (let r = 0; r < rails; r++) {
+    const s = r === 0 ? 1 : -1;
+    const x = s * (w / 2 + (open ? 0.07 : 0.03));
+    const hand = addBox(g, m('rail'), 0.045, 0.045, len, x, 0, 0);
+    hand.rotation.x = ang;
+    hand.position.set(x, h / 2 + 0.9, 0);
+    const posts = Math.max(2, Math.round(n / 3));
+    for (let i = 0; i <= posts; i++) {
+      const t = i / posts;
+      const z = d / 2 - t * d, y = t * h;
+      addBox(g, m('rail'), 0.025, 0.9, 0.025, x, y, z);
+    }
+  }
+  return g;
+}
+
 export const CATALOG = {
   // ===== KUCHNIA =====
   kBase: {
@@ -679,13 +722,86 @@ export const CATALOG = {
     },
   },
 
-  // ===== ARCHITEKTURA =====
-  wall: {
-    label: 'Ścianka działowa', cat: 'Architektura', icon: '▮', dims: { w: 200, d: 12, h: 260 },
-    slots: { body: { label: 'Ściana', mat: 'paint', color: '#efeae2' } },
+  // ===== ANTRESOLA I SCHODY =====
+  slab: {
+    label: 'Podłoga antresoli (strop)', cat: 'Antresola i schody', icon: '▀', dims: { w: 300, d: 200, h: 20 },
+    slots: { top: { label: 'Podłoga', mat: 'floorOak', color: '#ffffff' }, body: { label: 'Spód / czoło', mat: 'paint', color: '#f4f2ee' } },
+    build(item, m) {
+      // płyta budowana w dół od poziomu podłogi – jej wierzch = poziom antresoli
+      const g = new THREE.Group();
+      const { w, d, h } = item.m;
+      addBox(g, m('body'), w, h - 0.015, d, 0, -h, 0);
+      addBox(g, m('top'), w, 0.015, d, 0, -0.015, 0);
+      return g;
+    },
+  },
+  stairs: {
+    label: 'Schody proste (pełne)', cat: 'Antresola i schody', icon: '⫽', dims: { w: 90, d: 330, h: 260 },
+    slots: { treads: { label: 'Stopnie', mat: 'oak', color: '#ffffff' }, body: { label: 'Podstopnice / korpus', mat: 'matt', color: '#f2f0eb' }, rail: { label: 'Poręcz', mat: 'blackMetal', color: '#222222' } },
+    params: { steps: { label: 'Liczba stopni', min: 3, max: 25, def: 15 }, rails: { label: 'Poręcze (0–2)', min: 0, max: 2, def: 1 } },
+    build(item, m) { return buildStairs(item, m, false); },
+  },
+  stairsOpen: {
+    label: 'Schody ażurowe (na belce)', cat: 'Antresola i schody', icon: '⫻', dims: { w: 80, d: 300, h: 260 },
+    slots: { treads: { label: 'Stopnie', mat: 'oak', color: '#ffffff' }, body: { label: 'Belka / policzki', mat: 'blackMetal', color: '#222222' }, rail: { label: 'Poręcz', mat: 'blackMetal', color: '#222222' } },
+    params: { steps: { label: 'Liczba stopni', min: 3, max: 25, def: 14 }, rails: { label: 'Poręcze (0–2)', min: 0, max: 2, def: 1 } },
+    build(item, m) { return buildStairs(item, m, true); },
+  },
+  railing: {
+    label: 'Balustrada prętowa', cat: 'Antresola i schody', icon: '⦀', dims: { w: 200, d: 5, h: 110 },
+    slots: { body: { label: 'Balustrada', mat: 'blackMetal', color: '#222222' } },
     build(item, m) {
       const g = new THREE.Group();
-      addBox(g, m('body'), item.m.w, item.m.h, item.m.d, 0, 0, 0);
+      const { w, h } = item.m;
+      addBox(g, m('body'), w, 0.04, 0.05, 0, h - 0.04, 0);
+      addBox(g, m('body'), w, 0.03, 0.03, 0, 0.08, 0);
+      const n = Math.max(2, Math.round(w / 0.11));
+      for (let i = 0; i <= n; i++) addBox(g, m('body'), 0.015, h - 0.04, 0.015, -w / 2 + 0.01 + ((w - 0.02) * i) / n, 0, 0);
+      return g;
+    },
+  },
+  railingGlass: {
+    label: 'Balustrada szklana', cat: 'Antresola i schody', icon: '▯', dims: { w: 200, d: 5, h: 110 },
+    slots: { glass: { label: 'Szkło', mat: 'glass', color: '#dfeef0' }, body: { label: 'Profile / pochwyt', mat: 'steel', color: '#c8cacc' } },
+    build(item, m) {
+      const g = new THREE.Group();
+      const { w, h } = item.m;
+      addBox(g, m('body'), w, 0.1, 0.06, 0, 0, 0);
+      addBox(g, m('glass'), w - 0.01, h - 0.14, 0.017, 0, 0.1, 0);
+      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, w, 16), m('body'));
+      rail.rotation.z = Math.PI / 2;
+      rail.position.y = h - 0.02;
+      rail.castShadow = true;
+      g.add(rail);
+      return g;
+    },
+  },
+
+  // ===== ARCHITEKTURA =====
+  wall: {
+    label: 'Ściana', cat: 'Architektura', icon: '▮', dims: { w: 200, d: 12, h: 260 },
+    slots: { body: { label: 'Ściana', mat: 'paint', color: '#efeae2' } },
+    build(item, m) {
+      // ściana składana z prostopadłościanów, z otworami na drzwi i okna (item.holes, w metrach)
+      const g = new THREE.Group();
+      const { w, d, h } = item.m;
+      const mat = m('body');
+      const holes = (item.holes ?? [])
+        .map((o) => ({ x0: Math.max(-w / 2, o.x0), x1: Math.min(w / 2, o.x1), y0: Math.max(0, o.y0), y1: Math.min(h, o.y1) }))
+        .filter((o) => o.x1 - o.x0 > 0.01 && o.y1 - o.y0 > 0.01)
+        .sort((a, b) => a.x0 - b.x0);
+      let x = -w / 2;
+      for (const o of holes) {
+        const x0 = Math.max(o.x0, x);
+        if (x0 > x + 0.001) addBox(g, mat, x0 - x, h, d, (x + x0) / 2, 0, 0);
+        const ow = o.x1 - x0;
+        if (ow > 0.001) {
+          if (o.y0 > 0.001) addBox(g, mat, ow, o.y0, d, x0 + ow / 2, 0, 0);
+          if (o.y1 < h - 0.001) addBox(g, mat, ow, h - o.y1, d, x0 + ow / 2, o.y1, 0);
+        }
+        x = Math.max(x, o.x1);
+      }
+      if (x < w / 2 - 0.001) addBox(g, mat, w / 2 - x, h, d, (x + w / 2) / 2, 0, 0);
       return g;
     },
   },
