@@ -19,7 +19,9 @@ async function fromImage(file) {
     const img = await new Promise((ok, err) => {
       const i = new Image();
       i.onload = () => ok(i);
-      i.onerror = () => err(new Error('Nie można odczytać obrazu'));
+      i.onerror = () => err(new Error(/\.(heic|heif)$/i.test(file.name) || /hei[cf]/i.test(file.type)
+        ? 'zdjęcia HEIC (iPhone) ta przeglądarka nie odczyta – zapisz plan jako JPG lub zrób zrzut ekranu'
+        : 'nie można odczytać obrazu – użyj pliku JPG, PNG lub PDF'));
       i.src = url;
     });
     const k = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
@@ -36,8 +38,9 @@ async function fromImage(file) {
 let pdfjsPromise;
 async function pdfjs() {
   pdfjsPromise ??= Promise.all([
-    import('pdfjs-dist'),
-    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+    // wersja "legacy" działa także w starszych przeglądarkach (np. Safari na iPadzie)
+    import('pdfjs-dist/legacy/build/pdf.mjs'),
+    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
   ]).then(([lib, worker]) => {
     lib.GlobalWorkerOptions.workerSrc = worker.default;
     return lib;
@@ -73,6 +76,10 @@ export async function openPdf(file) {
       return c.toDataURL('image/png');
     },
   };
+}
+
+export function isPlanFile(file) {
+  return isPdf(file) || file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(file.name);
 }
 
 export function isPdf(file) {

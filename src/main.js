@@ -1,6 +1,6 @@
 import { Store, emptyProject, sampleProject, migrate, perimeterWalls } from './state.js';
 import { putAsset, resolveAsset, collectAssets, importAssets } from './assets.js';
-import { openPdf, imageToPlan, isPdf } from './planimport.js';
+import { openPdf, imageToPlan, isPdf, isPlanFile } from './planimport.js';
 import { Viewer } from './scene.js';
 import { CATALOG, newItem, catalogByCategory } from './furniture.js';
 import { MATERIALS, HANDLE_TYPES, HANDLE_FINISHES, materialOptions, materialLabel, defaultColorFor, PH_PREFIX } from './materials.js';
@@ -21,7 +21,7 @@ const h = (tag, attrs = {}, ...kids) => {
 
 const store = new Store();
 const viewer = new Viewer($('#view'), store);
-window.planer = { store, viewer }; // do debugowania w konsoli
+window.planer = { store, viewer, newItem, putAsset }; // do debugowania w konsoli
 
 // Popularne kolory frontów i tapicerek (palety producentów płyt i farb)
 const SWATCHES = [
@@ -109,6 +109,7 @@ const view = $('#view');
 view.addEventListener('dragover', (e) => e.preventDefault());
 view.addEventListener('drop', (e) => {
   e.preventDefault();
+  if (e.dataTransfer.files?.length) return; // pliki obsługuje handler okna
   const type = e.dataTransfer.getData('text/plain');
   if (!CATALOG[type]) return;
   const p = viewer.floorPoint(e);
@@ -922,7 +923,7 @@ function toast(msg, err = false) {
   toastEl.classList.toggle('err', err);
   toastEl.classList.add('show');
   clearTimeout(toastEl._t);
-  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 3000);
+  toastEl._t = setTimeout(() => toastEl.classList.remove('show'), err ? 9000 : 3500);
 }
 
 // ---------- motyw jasny / ciemny ----------
@@ -945,6 +946,48 @@ function applyTheme() {
   $('#themeBtn').title = `Motyw: ${{ auto: 'automatyczny', light: 'jasny', dark: 'ciemny' }[pref]} (kliknij, aby zmienić)`;
 }
 darkQuery.addEventListener('change', applyTheme);
+
+// ---------- pliki przeciągnięte na okno lub wklejone (Ctrl+V) ----------
+async function handleFile(f) {
+  const n = f.name.toLowerCase();
+  if (n.endsWith('.json')) {
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    $('#fileOpen').files = dt.files;
+    $('#fileOpen').dispatchEvent(new Event('change'));
+  } else if (n.endsWith('.glb') || n.endsWith('.gltf')) {
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    $('#fileModel').files = dt.files;
+    $('#fileModel').dispatchEvent(new Event('change'));
+  } else if (isPlanFile(f)) {
+    loadPlanFile(f);
+  } else {
+    toast('Nieobsługiwany plik: ' + f.name + ' (plan: JPG, PNG, PDF; projekt: .json; model: .glb)', true);
+  }
+}
+window.addEventListener('dragover', (e) => {
+  if (e.dataTransfer?.types?.includes('Files')) {
+    e.preventDefault();
+    document.body.classList.add('dropping');
+  }
+});
+window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+window.addEventListener('drop', (e) => {
+  document.body.classList.remove('dropping');
+  const f = e.dataTransfer?.files?.[0];
+  if (!f) return;
+  e.preventDefault();
+  handleFile(f);
+});
+window.addEventListener('paste', (e) => {
+  if (e.target.closest?.('input, textarea')) return;
+  const f = [...(e.clipboardData?.files ?? [])][0];
+  if (f && isPlanFile(f)) {
+    e.preventDefault();
+    loadPlanFile(new File([f], f.name || 'wklejony-plan.png', { type: f.type }));
+  }
+});
 
 // ---------- start ----------
 applyTheme();

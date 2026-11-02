@@ -747,6 +747,43 @@ export const CATALOG = {
     params: { steps: { label: 'Liczba stopni', min: 3, max: 25, def: 14 }, rails: { label: 'Poręcze (0–2)', min: 0, max: 2, def: 1 } },
     build(item, m) { return buildStairs(item, m, true); },
   },
+  stairsU: {
+    label: 'Schody zabiegowe (w kształcie U)', cat: 'Antresola i schody', icon: '⟲', dims: { w: 168, d: 211, h: 265 },
+    slots: { treads: { label: 'Stopnie', mat: 'oak', color: '#ffffff' }, body: { label: 'Słupek / konstrukcja', mat: 'blackMetal', color: '#222222' } },
+    params: { steps: { label: 'Liczba stopni', min: 7, max: 25, def: 15 }, winders: { label: 'Stopnie zabiegowe', min: 2, max: 9, def: 5 } },
+    build(item, m) {
+      // bieg 1: lewa połowa od przodu (+Z) do tyłu, zabiegi po półokręgu z tyłu, bieg 2: prawa połowa z powrotem do przodu
+      const g = new THREE.Group();
+      const { w, d, h } = item.m;
+      const n = item.p?.steps ?? 15, nw = Math.min(item.p?.winders ?? 5, n - 2);
+      const k1 = Math.floor((n - nw) / 2), k2 = n - nw - k1;
+      const rise = h / n, tt = 0.04, r = w / 2, L = Math.max(d - r, 0.1), cz = -d / 2 + r;
+      let step = 0;
+      const top = () => rise * ++step;
+      for (let i = 0; i < k1; i++) {
+        const run = L / k1;
+        addBox(g, m('treads'), r - 0.01, tt, run + 0.02, -r / 2, top() - tt, d / 2 - run * (i + 0.5));
+      }
+      for (let i = 0; i < nw; i++) {
+        const len = Math.PI / nw;
+        const wedge = new THREE.Mesh(new THREE.CylinderGeometry(r - 0.01, r - 0.01, tt, 24, 1, false, (3 * Math.PI) / 2 - (i + 1) * len, len), m('treads'));
+        wedge.position.set(0, top() - tt / 2, cz);
+        wedge.castShadow = wedge.receiveShadow = true;
+        g.add(wedge);
+      }
+      for (let i = 0; i < k2; i++) {
+        const run = L / k2;
+        addBox(g, m('treads'), r - 0.01, tt, run + 0.02, r / 2, top() - tt, cz + run * (i + 0.5));
+      }
+      addCyl(g, m('body'), 0.04, h, 0, 0, cz, 16);
+      // poręcz nad osią między biegami
+      const ang = Math.atan2(rise * k1, L);
+      const rail = addBox(g, m('body'), 0.04, 0.04, Math.hypot(L, rise * k1), 0, 0, 0);
+      rail.rotation.x = ang;
+      rail.position.set(0, (rise * k1) / 2 + 0.9, cz + L / 2);
+      return g;
+    },
+  },
   railing: {
     label: 'Balustrada prętowa', cat: 'Antresola i schody', icon: '⦀', dims: { w: 200, d: 5, h: 110 },
     slots: { body: { label: 'Balustrada', mat: 'blackMetal', color: '#222222' } },

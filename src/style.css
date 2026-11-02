@@ -166,3 +166,9 @@ button.small.danger { color: var(--danger); }
 
 .theme-btn { min-width: 34px; }
 :root[data-theme='dark'] .toast:not(.err) { background: #2e3640; }
+
+body.dropping .view::after {
+  content: 'Upuść plik: plan (JPG / PNG / PDF), projekt (.json) lub model (.glb)';
+  position: absolute; inset: 12px; border: 3px dashed var(--accent); border-radius: 12px; z-index: 5;
+  display: grid; place-items: center; background: rgba(31, 122, 236, .12); color: var(--accent); font-weight: 600; pointer-events: none;
+}
