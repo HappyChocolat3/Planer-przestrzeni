@@ -12,7 +12,7 @@ npm run build    # wersja produkcyjna w katalogu dist/ (działa z dowolnego fold
 ```
 
 Publikacja online: w ustawieniach repozytorium *Settings → Pages → Source* wybierz **GitHub Actions** –
-workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdym pushu do `main`
+workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdym pushu do domyślnej gałęzi repozytorium
 (można go też uruchomić ręcznie w zakładce *Actions*). Adres: `https://<użytkownik>.github.io/<repozytorium>/`.
 
 ## Funkcje
@@ -46,6 +46,7 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
   (tekstury i modele 3D na licencji **CC0**). Tekstury (z mapami normalnych i chropowatości, w rzeczywistej skali)
   nakładasz na wybrany mebel, podłogę lub ściany; modele dodajesz do sceny. Wymaga internetu.
 - **Własne modele** `.glb` / `.gltf` (np. z Sketchfab, BlenderKit, katalogów producentów).
+- **Tryb ciemny** – przycisk 🌓 w pasku: automatyczny (jak w systemie) → jasny → ciemny; wybór jest zapamiętywany.
 - **Zapis** – automatyczny w przeglądarce, plik projektu `.json`, obraz `.png` wizualizacji
   oraz lista elementów `.csv` (wymiary, materiały, uchwyty – przydatna do wyceny).
 

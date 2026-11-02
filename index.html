@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Planer przestrzeni</title>
+  <script>
+    try { const t = localStorage.getItem('planer-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}
+  </script>
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body>
@@ -53,6 +56,7 @@
         <option value="25">25 cm</option>
       </select>
     </label>
+    <button data-act="theme" class="ghost theme-btn" id="themeBtn" title="Motyw: automatyczny / jasny / ciemny">🌓</button>
     <button data-act="help" class="ghost" title="Pomoc">?</button>
   </header>
 

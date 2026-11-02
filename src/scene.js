@@ -117,6 +117,13 @@ export class Viewer {
     r.setAnimationLoop(() => this.render());
   }
 
+  /** Kolory sceny dla trybu jasnego / ciemnego. */
+  setTheme(dark) {
+    this.dark = dark;
+    this.scene.background = new THREE.Color(dark ? '#161b21' : '#e9edf1');
+    this.rebuildRoom();
+  }
+
   // ---------- poziomy ----------
   get levels() {
     return this.store.project.levels;
@@ -156,7 +163,9 @@ export class Viewer {
     g.add(floor);
 
     const size = Math.max(W, D) + 4;
-    this.grid = new THREE.GridHelper(size, Math.round(size * 2), '#8a96a3', '#b6c0ca');
+    this.grid = this.dark
+      ? new THREE.GridHelper(size, Math.round(size * 2), '#5c6876', '#3a434e')
+      : new THREE.GridHelper(size, Math.round(size * 2), '#8a96a3', '#b6c0ca');
     this.grid.material.transparent = true;
     this.grid.material.opacity = 0.35;
     this.grid.position.set((room.x ?? 0) / 100, this.levelElev(this.levelId) + 0.006, (room.z ?? 0) / 100);

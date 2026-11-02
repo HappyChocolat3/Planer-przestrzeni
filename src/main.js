@@ -709,6 +709,10 @@ const actions = {
   import: () => $('#fileModel').click(),
   help: () => $('#helpDialog').showModal(),
   plan: () => $('#filePlan').click(),
+  theme: () => {
+    const order = ['auto', 'light', 'dark'];
+    setTheme(order[(order.indexOf(themePref()) + 1) % order.length]);
+  },
   drawWalls: () => startTool(viewer.tool === 'wall' ? null : 'wall'),
 };
 document.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => actions[b.dataset.act]()));
@@ -921,7 +925,29 @@ function toast(msg, err = false) {
   toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 3000);
 }
 
+// ---------- motyw jasny / ciemny ----------
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+function themePref() {
+  try { return localStorage.getItem('planer-theme') || 'auto'; } catch { return 'auto'; }
+}
+function setTheme(pref) {
+  try { localStorage.setItem('planer-theme', pref); } catch {}
+  if (pref === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = pref;
+  applyTheme();
+  toast({ auto: 'Motyw: automatyczny (jak w systemie)', light: 'Motyw: jasny', dark: 'Motyw: ciemny' }[pref]);
+}
+function applyTheme() {
+  const pref = themePref();
+  const dark = pref === 'dark' || (pref === 'auto' && darkQuery.matches);
+  viewer.setTheme(dark);
+  $('#themeBtn').textContent = { auto: '🌓', light: '☀️', dark: '🌙' }[pref];
+  $('#themeBtn').title = `Motyw: ${{ auto: 'automatyczny', light: 'jasny', dark: 'ciemny' }[pref]} (kliknij, aby zmienić)`;
+}
+darkQuery.addEventListener('change', applyTheme);
+
 // ---------- start ----------
+applyTheme();
 renderLevels();
 renderCatalog();
 renderProps();
