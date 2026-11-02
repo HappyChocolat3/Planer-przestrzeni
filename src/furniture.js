@@ -1,7 +1,7 @@
 // Katalog mebli – modele parametryczne o typowych (normatywnych) wymiarach.
 // Wymiary w katalogu podane w cm; budowa w metrach. Front mebla skierowany w stronę +Z.
 import * as THREE from 'three';
-import { addBox, addCyl, addRounded } from './geometry.js';
+import { addBox, addCyl, addRounded, boxGeo } from './geometry.js';
 import { getMaterial, HANDLE_FINISHES } from './materials.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
@@ -234,6 +234,24 @@ function buildStairs(item, m, open) {
     }
   }
   return g;
+}
+
+/** Dodaje do kształtu otwory (wielokąty w cm, układ lokalny elementu). */
+function addShapeHoles(shape, holes) {
+  for (const h of holes ?? []) if (h.length >= 3) shape.holes.push(new THREE.Path(h.map(([x, z]) => new THREE.Vector2(x / 100, -z / 100))));
+}
+
+/** Strop z kształtu: cienka warstwa podłogi na wierzchu + korpus pod spodem. */
+function addSlabFromShape(g, shape, h, topMat, bodyMat) {
+  const top = new THREE.Mesh(new THREE.ShapeGeometry(shape), topMat);
+  top.geometry.rotateX(-Math.PI / 2);
+  top.position.y = 0.001;
+  top.receiveShadow = true;
+  const body = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: h - 0.001, bevelEnabled: false }), bodyMat);
+  body.rotation.x = -Math.PI / 2;
+  body.position.y = -h;
+  body.castShadow = body.receiveShadow = true;
+  g.add(top, body);
 }
 
 export function polygonArea(p) {
@@ -760,8 +778,15 @@ export const CATALOG = {
       // płyta budowana w dół od poziomu podłogi – jej wierzch = poziom antresoli
       const g = new THREE.Group();
       const { w, d, h } = item.m;
-      addBox(g, m('body'), w, h - 0.015, d, 0, -h, 0);
-      addBox(g, m('top'), w, 0.015, d, 0, -0.015, 0);
+      if (!item.holes?.length) {
+        addBox(g, m('body'), w, h - 0.015, d, 0, -h, 0);
+        addBox(g, m('top'), w, 0.015, d, 0, -0.015, 0);
+        return g;
+      }
+      // z otworami (np. na schody lub antresolę otwartą na salon)
+      const shape = new THREE.Shape([[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]].map(([x, z]) => new THREE.Vector2(x, -z)));
+      addShapeHoles(shape, item.holes);
+      addSlabFromShape(g, shape, h, m('top'), m('body'));
       return g;
     },
   },
@@ -844,6 +869,84 @@ export const CATALOG = {
     },
   },
 
+  roofSlope: {
+    label: 'Skos dachu (z oknem dachowym)', cat: 'Antresola i schody', icon: '◺', dims: { w: 300, d: 200, h: 250 },
+    slots: { body: { label: 'Skos (sufit)', mat: 'paint', color: '#f4f2ee' }, frame: { label: 'Rama okna', mat: 'satin', color: '#e9e9e9' }, knee: { label: 'Ścianka kolankowa', mat: 'paint', color: '#efeae2' } },
+    params: {
+      low: { label: 'Wysokość niższej krawędzi [cm]', min: 0, max: 400, def: 100 },
+      windows: { label: 'Okna dachowe', min: 0, max: 4, def: 1 },
+      winW: { label: 'Szer. okna [cm]', min: 40, max: 200, def: 78 },
+      winL: { label: 'Dł. okna [cm]', min: 40, max: 200, def: 118 },
+      winPos: { label: 'Położenie okna na skosie [%]', min: 0, max: 100, def: 50 },
+      winShift: { label: 'Przesunięcie okna w bok [cm]', min: -500, max: 500, def: 0 },
+      knee: { label: 'Ścianka kolankowa (0/1)', min: 0, max: 1, def: 1 },
+    },
+    build(item, m) {
+      // szerokość w = wzdłuż okapu (oś X), głębokość d = rzut skosu; niższa krawędź z przodu (+Z), wyższa z tyłu
+      const g = new THREE.Group();
+      const { w, d, h } = item.m;
+      const low = Math.min((item.p?.low ?? 100) / 100, h - 0.01);
+      const rise = h - low, L = Math.hypot(d, rise), ang = Math.atan2(rise, d), t = 0.06;
+      const panel = new THREE.Group();
+      // otwory na okna dachowe (u – wzdłuż okapu, v – wzdłuż spadku od dolnej krawędzi)
+      const n = item.p?.windows ?? 1, ww = (item.p?.winW ?? 78) / 100, wl = Math.min((item.p?.winL ?? 118) / 100, L * 0.95);
+      const vc = Math.min(Math.max(((item.p?.winPos ?? 50) / 100) * L, wl / 2), L - wl / 2), shift = (item.p?.winShift ?? 0) / 100;
+      const holes = [];
+      for (let i = 0; i < n; i++) {
+        const uc = shift + (i - (n - 1) / 2) * (ww + 0.4);
+        holes.push({ x0: Math.max(-w / 2, uc - ww / 2), x1: Math.min(w / 2, uc + ww / 2), y0: vc - wl / 2, y1: vc + wl / 2 });
+      }
+      const piece = (u0, u1, v0, v1, mat) => {
+        if (u1 - u0 < 0.002 || v1 - v0 < 0.002) return;
+        const b = new THREE.Mesh(boxGeo(u1 - u0, t, v1 - v0), mat);
+        b.position.set((u0 + u1) / 2, t / 2, -(v0 + v1) / 2);
+        b.castShadow = b.receiveShadow = true;
+        panel.add(b);
+      };
+      let u = -w / 2;
+      for (const o of holes.sort((a, b) => a.x0 - b.x0)) {
+        piece(u, o.x0, 0, L, m('body'));
+        piece(o.x0, o.x1, 0, o.y0, m('body'));
+        piece(o.x0, o.x1, o.y1, L, m('body'));
+        // rama i szyba
+        const f = 0.05;
+        piece(o.x0, o.x1, o.y0, o.y0 + f, m('frame'));
+        piece(o.x0, o.x1, o.y1 - f, o.y1, m('frame'));
+        piece(o.x0, o.x0 + f, o.y0, o.y1, m('frame'));
+        piece(o.x1 - f, o.x1, o.y0, o.y1, m('frame'));
+        const glass = new THREE.Mesh(new THREE.PlaneGeometry(o.x1 - o.x0 - 2 * f, o.y1 - o.y0 - 2 * f), getMaterial('glass', '#bcd6e6'));
+        glass.rotation.x = -Math.PI / 2;
+        glass.position.set((o.x0 + o.x1) / 2, t * 0.6, -(o.y0 + o.y1) / 2);
+        panel.add(glass);
+        u = o.x1;
+      }
+      piece(u, w / 2, 0, L, m('body'));
+      panel.rotation.x = ang;
+      panel.position.set(0, low, d / 2);
+      g.add(panel);
+      if ((item.p?.knee ?? 1) && low > 0.02) addBox(g, m('knee'), w, low, 0.1, 0, 0, d / 2 + 0.05);
+      return g;
+    },
+  },
+  floorVoid: {
+    label: 'Otwór w podłodze antresoli', cat: 'Antresola i schody', icon: '⬜', dims: { w: 200, d: 150, h: 1 },
+    slots: {},
+    build(item) {
+      // sam otwór wycina dziurę w podłodze/stropie poziomu; tu tylko obrys (widoczny przy zaznaczaniu)
+      const g = new THREE.Group();
+      const { w, d } = item.m;
+      const pts = [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2], [-w / 2, -d / 2]].map(([x, z]) => new THREE.Vector3(x, 0.01, z));
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({ color: '#e5484d', dashSize: 0.12, gapSize: 0.08 }));
+      line.computeLineDistances();
+      g.add(line);
+      // niewidoczna płaszczyzna, żeby dało się otwór kliknąć i przesunąć
+      const hit = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.rotation.x = -Math.PI / 2;
+      hit.position.y = 0.01;
+      g.add(hit);
+      return g;
+    },
+  },
   // ===== ARCHITEKTURA =====
   room: {
     label: 'Pomieszczenie', cat: 'Architektura', icon: '⬚', dims: { w: 300, d: 300, h: 1 }, hidden: true,
@@ -854,6 +957,7 @@ export const CATALOG = {
       const pts = item.points?.length >= 3 ? item.points : [[-150, -150], [150, -150], [150, 150], [-150, 150]];
       const sx = item.pw ? item.w / item.pw : 1, sz = item.pd ? item.d / item.pd : 1;
       const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2((x * sx) / 100, (-z * sz) / 100)));
+      addShapeHoles(shape, item.holes);
       const geo = new THREE.ShapeGeometry(shape);
       geo.rotateX(-Math.PI / 2);
       const floor = new THREE.Mesh(geo, m('floor'));

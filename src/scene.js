@@ -10,7 +10,7 @@ import { buildItem, pointInPolygon } from './furniture.js';
 import { resolveAsset } from './assets.js';
 
 const IN_WALL = new Set(['door', 'window']);
-const FREE = new Set(['wall', 'railing', 'railingGlass', 'room']); // bez ograniczania do obrysu podłogi
+const FREE = new Set(['wall', 'railing', 'railingGlass', 'room', 'roofSlope', 'floorVoid']); // bez ograniczania do obrysu podłogi
 const deg = THREE.MathUtils.degToRad;
 
 export class Viewer {
@@ -251,14 +251,15 @@ export class Viewer {
     const item = this.store.item(id);
     if (!item) return;
     if (item.type === 'gltf' && !this.gltfCache.has(item.src)) this.requestModel?.(item);
-    const holes = item.type === 'wall' ? this.wallHoles(item) : null;
+    const holes = item.type === 'wall' ? this.wallHoles(item) : (item.type === 'room' || item.type === 'slab') ? this.floorHoles(item) : null;
     const obj = buildItem(holes ? { ...item, holes } : item, this.gltfCache);
-    if (holes) obj.add(this.wallCap(item, holes));
+    if (item.type === 'wall') obj.add(this.wallCap(item, holes));
     obj.position.y += this.levelElev(item.level);
     obj.userData.levelId = this.level(item.level).id;
     this.itemsGroup.add(obj);
     this.objects.set(id, obj);
     if (walls && (item.type === 'wall' || IN_WALL.has(item.type))) this.rebuildWalls(item.level);
+    if (walls && item.type === 'floorVoid') this.rebuildFloors(item.level);
     if (id === this.selectedId) this.updateSelection();
   }
 
@@ -268,6 +269,31 @@ export class Viewer {
     for (const it of this.store.project.items) {
       if (it.type === 'wall' && this.level(it.level).id === lid) this.rebuildItem(it.id, false);
     }
+  }
+
+  /** Przebudowuje podłogi pomieszczeń i stropy poziomu (otwory w podłodze). */
+  rebuildFloors(levelId) {
+    const lid = this.level(levelId).id;
+    for (const it of this.store.project.items) {
+      if ((it.type === 'room' || it.type === 'slab') && this.level(it.level).id === lid) this.rebuildItem(it.id, false);
+    }
+  }
+
+  /** Otwory w podłodze/stropie (wielokąty w cm, w układzie elementu) od elementów „Otwór w podłodze”. */
+  floorHoles(item) {
+    const out = [];
+    const r = deg(item.rot ?? 0), cr = Math.cos(r), sr = Math.sin(r);
+    for (const v of this.store.project.items) {
+      if (v.type !== 'floorVoid' || this.level(v.level).id !== this.level(item.level).id) continue;
+      const a = deg(v.rot ?? 0), ca = Math.cos(a), sa = Math.sin(a);
+      const pts = [[-v.w / 2, -v.d / 2], [v.w / 2, -v.d / 2], [v.w / 2, v.d / 2], [-v.w / 2, v.d / 2]].map(([lx, lz]) => {
+        const wx = v.x + lx * ca - lz * sa, wz = v.z + lx * sa + lz * ca; // świat
+        const dx = wx - item.x, dz = wz - item.z;
+        return [dx * cr + dz * sr, -dx * sr + dz * cr]; // układ elementu
+      });
+      out.push(pts);
+    }
+    return out;
   }
 
   /** Otwory w ścianie (w metrach, w układzie ściany) od drzwi i okien, które w niej stoją. */

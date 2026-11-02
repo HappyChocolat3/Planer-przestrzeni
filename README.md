@@ -31,7 +31,8 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
   wysokość, kolor albo **usunąć** (`Del`). Drzwi i okna same wycinają w ścianach otwory.
 - **Antresola / poziomy** – dowolna liczba poziomów z wysokością podłogi; katalog „Antresola i schody”:
   podłoga antresoli (strop), schody proste pełne i ażurowe (wysokość dobiera się do poziomu wyżej),
-  balustrady prętowe i szklane. Widok: bieżący poziom, bieżący + niższe lub wszystkie.
+  balustrady prętowe i szklane, **skos dachu z oknami dachowymi** (wysokość dolnej i górnej krawędzi, ścianka
+  kolankowa) oraz **otwór w podłodze antresoli** (wycina strop – widok na parter). Widok: bieżący poziom, bieżący + niższe lub wszystkie.
   Każdy poziom ma własną wysokość ścian (np. parter 265 cm, antresola 220 cm) – zmiana dopasowuje ściany, schody
   i położenie wyższych poziomów.
 

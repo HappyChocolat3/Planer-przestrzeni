@@ -653,7 +653,7 @@ $('#aiRun').addEventListener('click', async () => {
     status.textContent = `Gotowe po ${Math.round((Date.now() - t0) / 1000)} s.`;
     $('#aiResult').replaceChildren(
       h('b', {}, 'Rozpoznano:'),
-      h('ul', {}, p.drawings.map((d) => h('li', {}, `${d.name}: ${d.walls.length} ścian, ${d.openings.length} drzwi/okien, ${d.rooms.length} pomieszczeń (${d.rooms.map((r) => r.name).join(', ') || '–'}), ${d.fixtures.length} elementów wyposażenia`))),
+      h('ul', {}, p.drawings.map((d) => h('li', {}, `${d.name}: ${d.walls.length} ścian, ${d.openings.length} drzwi/okien, ${d.rooms.length} pomieszczeń (${d.rooms.map((r) => r.name).join(', ') || '–'}), ${d.fixtures.length} elementów wyposażenia${d.roof_slopes?.length ? `, skosy: ${d.roof_slopes.length} (okna dachowe: ${d.roof_slopes.reduce((n, s) => n + s.roof_windows.length, 0)})` : ''}${d.floor_openings?.length ? `, otwory w podłodze: ${d.floor_openings.length}` : ''}`))),
       h('b', {}, 'Wysokość ścian poziomów (cm):'),
       h('div', { class: 'ai-heights' }, p.drawings.map((d, i) => h('label', { class: 'field' },
         h('span', {}, `${d.name}${i < p.drawings.length - 1 ? ' – do podłogi wyższego poziomu' : ' – do sufitu'}`),
@@ -866,6 +866,7 @@ function removeItem(id) {
   store.project.items = store.project.items.filter((i) => i.id !== id);
   viewer.removeItemObject(id);
   if (it && (it.type === 'wall' || it.type === 'door' || it.type === 'window')) viewer.rebuildWalls(it.level);
+  if (it?.type === 'floorVoid') viewer.rebuildFloors(it.level);
   if (viewer.selectedId === id) viewer.select(null);
   store.commit('remove');
   renderProps();

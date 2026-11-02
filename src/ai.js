@@ -48,6 +48,15 @@ export const PlanSchema = z.object({
       area_m2: z.number().nullable(),
       polygon: z.array(Pt).describe('Obrys podłogi pomieszczenia (wewnętrzne lica ścian), w cm, zgodnie z ruchem wskazówek zegara'),
     })),
+    roof_slopes: z.array(z.object({
+      x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number(),
+      low_side: z.enum(['up', 'down', 'left', 'right']).describe('Strona prostokąta, przy której skos jest najniższy'),
+      low_height_cm: z.number().describe('Wysokość sufitu przy niższej krawędzi'),
+      high_height_cm: z.number().describe('Wysokość sufitu przy wyższej krawędzi'),
+      roof_windows: z.array(z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() })).describe('Okna dachowe w tym skosie – prostokąty w rzucie, w cm'),
+    })).describe('Skosy dachu (sufit pochyły) na tym poziomie: prostokąt w rzucie w cm'),
+    floor_openings: z.array(z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }))
+      .describe('Otwory w podłodze tego poziomu (np. nad schodami, antresola otwarta na pomieszczenie poniżej), prostokąty w cm'),
     fixtures: z.array(z.object({
       type: z.enum(FIXTURE_TYPES),
       x: z.number(), y: z.number(),
@@ -71,6 +80,8 @@ Zasady:
 - Wyposażenie narysowane na planie (szafki kuchenne, zlew, płyta, wanna/prysznic, WC, umywalka, pralka, schody) podaj jako prostokąty: środek, width_cm = wymiar wzdłuż frontu (z boku na bok, patrząc od przodu), depth_cm = od frontu do tyłu, facing = kierunek, w który zwrócony jest front.
   Ciąg szafek kuchennych podaj jako jeden kitchen_counter na każdy prosty odcinek blatu; zlew i płytę jako osobne elementy w tym ciągu (nie nakładaj ich na kitchen_counter – podziel blat).
   Schody: prostokąt całej klatki schodowej, facing = strona wejścia na pierwszy stopień, stairs_shape wg kształtu biegu.
+- Skosy dachu: linie przerywane z opisem wysokości (np. „1,4 m”, „2,2 m”) oznaczają wysokość pochyłego sufitu – podaj obszar skosu, stronę najniższą i wysokości na obu krawędziach (ekstrapoluj liniowo z opisanych linii). Okna dachowe (prostokąt z przekątną w obszarze skosu) podaj w roof_windows.
+- Otwory w podłodze wyższych poziomów (nad schodami, antresola otwarta na dół) podaj w floor_openings.
 - calibration: wskaż piksele obrazu odpowiadające punktowi (0,0) i drugiemu punktowi na tej samej linii poziomej, oraz współrzędną x tego punktu w cm. To posłuży do nałożenia obrazu pod model.
 - Pomijaj sąsiednie mieszkania, klatkę schodową, plan kondygnacji w małej skali, tabelki i opisy.`;
 

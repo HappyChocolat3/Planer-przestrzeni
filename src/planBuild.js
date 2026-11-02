@@ -108,6 +108,40 @@ export async function buildFromPlan(project, plan, img, putAsset, opts = {}) {
       summary.rooms++;
     }
 
+    // skosy dachu z oknami dachowymi
+    const SIDE_ROT = { down: 0, right: 270, up: 180, left: 90 }; // niższa krawędź → obrót
+    for (const sl of d.roof_slopes ?? []) {
+      const x0 = Math.min(sl.x0, sl.x1), x1 = Math.max(sl.x0, sl.x1), y0 = Math.min(sl.y0, sl.y1), y1 = Math.max(sl.y0, sl.y1);
+      const rot = SIDE_ROT[sl.low_side] ?? 0;
+      const alongX = sl.low_side === 'left' || sl.low_side === 'right'; // spadek wzdłuż osi X
+      const depth = alongX ? x1 - x0 : y1 - y0, width = alongX ? y1 - y0 : x1 - x0;
+      if (depth < 20 || width < 20) continue;
+      const low = Math.max(0, sl.low_height_cm), high = Math.max(low + 10, sl.high_height_cm);
+      const L = Math.hypot(depth, high - low);
+      const p = { low: Math.round(low), windows: 0, knee: low > 5 ? 1 : 0 };
+      const rw = sl.roof_windows ?? [];
+      if (rw.length) {
+        const w0 = rw[0];
+        const wx0 = Math.min(w0.x0, w0.x1), wx1 = Math.max(w0.x0, w0.x1), wy0 = Math.min(w0.y0, w0.y1), wy1 = Math.max(w0.y0, w0.y1);
+        const projL = alongX ? wx1 - wx0 : wy1 - wy0, ww = alongX ? wy1 - wy0 : wx1 - wx0;
+        const c = alongX ? (wx0 + wx1) / 2 : (wy0 + wy1) / 2;
+        const fromLow = { left: c - x0, right: x1 - c, up: c - y0, down: y1 - c }[sl.low_side];
+        const a = (rot * Math.PI) / 180; // oś „w bok” skosu w świecie: (cos, sin)
+        const cxw = (wx0 + wx1) / 2 - (x0 + x1) / 2, cyw = (wy0 + wy1) / 2 - (y0 + y1) / 2;
+        Object.assign(p, {
+          windows: rw.length, winW: Math.round(ww), winL: Math.round((projL * L) / depth),
+          winPos: Math.round((100 * fromLow) / depth), winShift: Math.round(cxw * Math.cos(a) + cyw * Math.sin(a)),
+        });
+      }
+      add('roofSlope', { name: 'Skos dachu', x: X((x0 + x1) / 2), z: Z((y0 + y1) / 2), rot, w: Math.round(width), d: Math.round(depth), h: Math.round(high), p });
+      summary.fixtures++;
+    }
+    for (const o of d.floor_openings ?? []) {
+      const x0 = Math.min(o.x0, o.x1), x1 = Math.max(o.x0, o.x1), y0 = Math.min(o.y0, o.y1), y1 = Math.max(o.y0, o.y1);
+      if (x1 - x0 < 20 || y1 - y0 < 20) continue;
+      add('floorVoid', { name: 'Otwór w podłodze', x: X((x0 + x1) / 2), z: Z((y0 + y1) / 2), w: Math.round(x1 - x0), d: Math.round(y1 - y0) });
+    }
+
     for (const f of d.fixtures) {
       const rot = FACING_ROT[f.facing] ?? 0;
       const W = Math.max(20, Math.round(f.width_cm)), D = Math.max(20, Math.round(f.depth_cm));
