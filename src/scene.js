@@ -159,7 +159,7 @@ export class Viewer {
     g.clear();
     const room = this.store.project.room;
     const W = room.w / 100, D = room.d / 100;
-    const floor = new THREE.Mesh(boxGeo(W + 0.24, 0.02, D + 0.24), getMaterial(room.floor.mat, room.floor.color));
+    const floor = new THREE.Mesh(boxGeo(W + 0.24, 0.02, D + 0.24), getMaterial(room.floor.mat, room.floor.color, room.floor.pattern));
     floor.position.set((room.x ?? 0) / 100, -0.01, (room.z ?? 0) / 100);
     floor.receiveShadow = true;
     g.add(floor);

@@ -1124,7 +1124,7 @@ export function buildItem(item, gltfCache) {
   const def = CATALOG[item.type];
   const m = (slot) => {
     const p = item.parts?.[slot] ?? def?.slots?.[slot] ?? { mat: 'matt', color: '#cccccc' };
-    return getMaterial(p.mat, p.color);
+    return getMaterial(p.mat, p.color, p.pattern);
   };
   let g;
   if (item.type === 'gltf') {

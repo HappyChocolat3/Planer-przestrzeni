@@ -244,7 +244,163 @@ function makeTexture(key, def, color) {
 }
 
 /** Zwraca (współdzielony) materiał dla klucza i koloru. */
-export function getMaterial(key, color) {
+// ---------- wzory (kropki, paski, kratka…) ----------
+export const PATTERNS = {
+  none: 'Bez wzoru',
+  dots: 'Kropki',
+  polka: 'Groszki (przesunięte)',
+  stripesV: 'Paski pionowe',
+  stripesH: 'Paski poziome',
+  stripesD: 'Paski ukośne',
+  checks: 'Szachownica',
+  gingham: 'Kratka (vichy)',
+  herringbone: 'Jodełka',
+  chevron: 'Zygzak',
+  diamonds: 'Romby',
+  flowers: 'Kwiatki',
+  terrazzo: 'Lastryko',
+  hexagons: 'Plaster miodu',
+  waves: 'Fale',
+};
+
+const PATTERN_PX = 256;
+
+/** Rysuje jeden kafel wzoru (kolor c2) na kontekście g o boku s pikseli. */
+function drawPattern(g, type, c2, s) {
+  g.fillStyle = c2;
+  g.strokeStyle = c2;
+  const r = rng(7);
+  const circle = (x, y, rad) => { g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill(); };
+  switch (type) {
+    case 'dots': circle(s / 2, s / 2, s * 0.18); break;
+    case 'polka':
+      for (const [x, y] of [[s / 4, s / 4], [3 * s / 4, 3 * s / 4]]) circle(x, y, s * 0.12);
+      break;
+    case 'stripesV': g.fillRect(0, 0, s / 2, s); break;
+    case 'stripesH': g.fillRect(0, 0, s, s / 2); break;
+    case 'stripesD':
+      g.lineWidth = s * 0.25;
+      for (const o of [-s, 0, s]) { g.beginPath(); g.moveTo(o, s); g.lineTo(o + s, 0); g.stroke(); }
+      break;
+    case 'checks': g.fillRect(0, 0, s / 2, s / 2); g.fillRect(s / 2, s / 2, s / 2, s / 2); break;
+    case 'gingham':
+      g.globalAlpha = 0.5; g.fillRect(0, 0, s / 2, s); g.fillRect(0, 0, s, s / 2);
+      g.globalAlpha = 1; g.fillRect(0, 0, s / 2, s / 2);
+      break;
+    case 'herringbone': {
+      g.lineWidth = s * 0.12;
+      for (let i = 0; i < 4; i++) {
+        const y = (i * s) / 4;
+        g.beginPath(); g.moveTo(0, y + s / 8); g.lineTo(s / 2, y + s / 4 + s / 8); g.stroke();
+        g.beginPath(); g.moveTo(s / 2, y + s / 4 + s / 8); g.lineTo(s, y + s / 8); g.stroke();
+      }
+      break;
+    }
+    case 'chevron':
+      g.lineWidth = s * 0.16;
+      for (const y of [s * 0.25, s * 0.75]) { g.beginPath(); g.moveTo(-2, y + s / 8); g.lineTo(s / 2, y - s / 8); g.lineTo(s + 2, y + s / 8); g.stroke(); }
+      break;
+    case 'diamonds':
+      g.beginPath(); g.moveTo(s / 2, s * 0.05); g.lineTo(s * 0.95, s / 2); g.lineTo(s / 2, s * 0.95); g.lineTo(s * 0.05, s / 2); g.closePath(); g.fill();
+      break;
+    case 'flowers': {
+      const draw = (cx, cy, k) => {
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          circle(cx + Math.cos(a) * s * 0.07 * k, cy + Math.sin(a) * s * 0.07 * k, s * 0.055 * k);
+        }
+        g.save(); g.globalCompositeOperation = 'destination-out'; circle(cx, cy, s * 0.03 * k); g.restore();
+      };
+      draw(s * 0.3, s * 0.3, 1.2);
+      draw(s * 0.78, s * 0.75, 0.9);
+      break;
+    }
+    case 'terrazzo':
+      for (let i = 0; i < 26; i++) {
+        const x = r() * s, y = r() * s, rad = s * (0.015 + r() * 0.045);
+        g.globalAlpha = 0.55 + r() * 0.45;
+        g.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2 + r(), rr = rad * (0.6 + r() * 0.6);
+          k ? g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) : g.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+        }
+        g.closePath(); g.fill();
+      }
+      g.globalAlpha = 1;
+      break;
+    case 'hexagons': {
+      g.lineWidth = s * 0.04;
+      const R = s / 3, hgt = Math.sqrt(3) * R / 2;
+      const hex = (cx, cy) => { g.beginPath(); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; k ? g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R) : g.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); } g.closePath(); g.stroke(); };
+      for (const cx of [0, 1.5 * R, 3 * R]) for (let j = -1; j < 3; j++) hex(cx, j * 2 * hgt + (cx === 1.5 * R ? hgt : 0));
+      break;
+    }
+    case 'waves':
+      g.lineWidth = s * 0.08;
+      for (const y0 of [s * 0.25, s * 0.75]) {
+        g.beginPath();
+        for (let x = 0; x <= s; x += 4) { const y = y0 + Math.sin((x / s) * Math.PI * 2) * s * 0.1; x ? g.lineTo(x, y) : g.moveTo(x, y); }
+        g.stroke();
+      }
+      break;
+    default: break;
+  }
+}
+
+/** Tekstura: materiał bazowy (kolor lub jego tekstura) + wzór; kafel = size cm. */
+function patternTexture(key, def, color, pat) {
+  const ck = `pat|${key}|${color}|${pat.type}|${pat.color2}|${pat.size}`;
+  if (texCache.has(ck)) return texCache.get(ck);
+  const s = PATTERN_PX;
+  const c = canvas(s);
+  const g = c.getContext('2d');
+  const tileM = Math.max(0.5, pat.size ?? 10) / 100;
+  if (def?.tex) {
+    // tekstura materiału w prawdziwej skali pod wzorem
+    const base = def.tex(def.bake ? color : defaultColorFor(key));
+    const k = (s * def.size) / (tileM * base.width);
+    const p = g.createPattern(base, 'repeat');
+    p.setTransform(new DOMMatrix().scale(k));
+    g.fillStyle = p;
+    g.fillRect(0, 0, s, s);
+    if (!def.bake && color && color.toLowerCase() !== '#ffffff') {
+      g.globalCompositeOperation = 'multiply';
+      g.fillStyle = color;
+      g.fillRect(0, 0, s, s);
+      g.globalCompositeOperation = 'source-over';
+    }
+  } else {
+    g.fillStyle = color || '#ffffff';
+    g.fillRect(0, 0, s, s);
+  }
+  drawPattern(g, pat.type, pat.color2 || '#222222', s);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  t.repeat.set(1 / tileM, 1 / tileM);
+  texCache.set(ck, t);
+  return t;
+}
+
+/** Mały podgląd wzoru (data URL) do przycisków w panelu. */
+export function patternPreview(color, pat) {
+  const c = canvas(48);
+  const g = c.getContext('2d');
+  g.fillStyle = color || '#ffffff';
+  g.fillRect(0, 0, 48, 48);
+  if (pat?.type && pat.type !== 'none') {
+    const t = canvas(24);
+    const tg = t.getContext('2d');
+    drawPattern(tg, pat.type, pat.color2 || '#222222', 24);
+    g.fillStyle = g.createPattern(t, 'repeat');
+    g.fillRect(0, 0, 48, 48);
+  }
+  return c.toDataURL();
+}
+
+export function getMaterial(key, color, pattern) {
+  if (pattern && pattern.type && pattern.type !== 'none') return getPatternMaterial(key, color, pattern);
   if (key?.startsWith(PH_PREFIX)) {
     const id = key.slice(3);
     const ck = `${key}|${color}`;
@@ -278,6 +434,21 @@ export function getMaterial(key, color) {
     mat.opacity = def.opacity;
     mat.depthWrite = false;
   }
+  matCache.set(ck, mat);
+  return mat;
+}
+
+function getPatternMaterial(key, color, pat) {
+  const ck = `${key}|${color}|${pat.type}|${pat.color2}|${pat.size}`;
+  if (matCache.has(ck)) return matCache.get(ck);
+  const ph = key?.startsWith(PH_PREFIX);
+  const def = ph ? null : (MATERIALS[key] ?? MATERIALS.matt);
+  const col = color || (def ? defaultColorFor(key) : '#ffffff');
+  const map = patternTexture(key, def, col, pat);
+  const opts = { color: '#ffffff', map, roughness: def?.roughness ?? 0.8, metalness: def?.metalness ?? 0 };
+  const mat = def?.clearcoat || def?.sheen
+    ? new THREE.MeshPhysicalMaterial({ ...opts, clearcoat: def.clearcoat ?? 0, clearcoatRoughness: 0.05, sheen: def.sheen ?? 0, sheenColor: new THREE.Color(col) })
+    : new THREE.MeshStandardMaterial(opts);
   matCache.set(ck, mat);
   return mat;
 }

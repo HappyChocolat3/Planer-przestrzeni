@@ -53,7 +53,12 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
 - **Kolory i materiały** dla każdej części mebla osobno (korpus, fronty, blat, tapicerka, nogi…):
   lakiery mat/satyna/połysk, okleiny drewnopodobne (dąb, orzech, jesion, sosna, wenge), tkanina, welur, skóra,
   metale, szkło, marmur, granit, beton, ceramika, panele, jodełka, płytki – plus paleta popularnych kolorów
-  i dowolny kolor z próbnika.
+  i dowolny kolor z próbnika lub wpisany kodem (#RRGGBB).
+- **Wzory** – kropki, groszki, paski (pionowe, poziome, ukośne), szachownica, kratka vichy, jodełka, zygzak,
+  romby, kwiatki, lastryko, plaster miodu, fale; z własnym kolorem wzoru i wielkością w cm – na każdej części mebla,
+  podłodze i ścianach.
+- **Moje wykończenia** – zapisany kolor + materiał + wzór pod własną nazwą (zostaje w przeglądarce i w pliku projektu);
+  jednym kliknięciem nakładasz go na dowolną część, a „Tak samo we wszystkich meblach” ujednolica np. wszystkie fronty.
 - **Uchwyty** – reling, reling długi, gałka, muszelka, pierścień, krawędziowy, gola, skórzany pasek;
   10 wykończeń (chrom, stal, czarny mat, mosiądz, złoto, miedź, grafit, biały, drewno, skóra); strona zawiasów.
   Przycisk „Zastosuj fronty i uchwyty do wszystkich szafek” zmienia całą zabudowę jednym kliknięciem.

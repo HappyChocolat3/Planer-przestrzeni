@@ -29,7 +29,11 @@ export function addBox(parent, mat, w, h, d, x = 0, y = 0, z = 0) {
 
 /** Walec pionowy; (x, y, z) = środek podstawy. */
 export function addCyl(parent, mat, r, h, x = 0, y = 0, z = 0, seg = 20, rTop = r) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(rTop, r, h, seg), mat);
+  const geo = new THREE.CylinderGeometry(rTop, r, h, seg);
+  // UV w skali świata: obwód × wysokość (wzory i tekstury bez rozciągania)
+  const uv = geo.attributes.uv, circ = Math.PI * (r + rTop);
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * circ, uv.getY(i) * h);
+  const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y + h / 2, z);
   m.castShadow = true;
   m.receiveShadow = true;
@@ -57,10 +61,16 @@ export function addRounded(parent, mat, w, h, d, r, x = 0, y = 0, z = 0) {
     depth: Math.max(d - 2 * r, 0.001), bevelEnabled: true, bevelSize: r, bevelThickness: r, bevelSegments: 4, curveSegments: 6,
   });
   geo.translate(0, 0, -(d - 2 * r) / 2);
-  // UV w skali świata: rzut płaski
-  const pos = geo.attributes.position, uv = geo.attributes.uv;
-  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) + pos.getZ(i), pos.getY(i));
+  // UV w skali świata: rzut na płaszczyznę zależnie od kierunku ściany (góra/dół, boki, przód/tył)
   geo.computeVertexNormals();
+  const pos = geo.attributes.position, uv = geo.attributes.uv, nor = geo.attributes.normal;
+  for (let i = 0; i < pos.count; i++) {
+    const nx = Math.abs(nor.getX(i)), ny = Math.abs(nor.getY(i)), nz = Math.abs(nor.getZ(i));
+    if (ny >= nx && ny >= nz) uv.setXY(i, pos.getX(i), pos.getZ(i));
+    else if (nx >= nz) uv.setXY(i, pos.getZ(i), pos.getY(i));
+    else uv.setXY(i, pos.getX(i), pos.getY(i));
+  }
+  uv.needsUpdate = true;
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y + h / 2, z);
   m.castShadow = true;

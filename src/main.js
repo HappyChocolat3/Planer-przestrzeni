@@ -5,7 +5,7 @@ import { Viewer } from './scene.js';
 import { CATALOG, newItem, catalogByCategory } from './furniture.js';
 import './catalog2.js'; // dodatkowe meble (kanapy, szafki, szafy, zlewy, łazienka, przedpokój)
 import './catalog3.js'; // kanapa rozkładana i biurko narożne w wielu stylach
-import { MATERIALS, HANDLE_TYPES, HANDLE_FINISHES, materialOptions, materialLabel, defaultColorFor, PH_PREFIX } from './materials.js';
+import { MATERIALS, HANDLE_TYPES, HANDLE_FINISHES, PATTERNS, patternPreview, materialOptions, materialLabel, defaultColorFor, PH_PREFIX } from './materials.js';
 import * as PH from './polyhaven.js';
 import { Box3, Vector3 } from 'three';
 import { buildFromPlan, roomArea } from './planBuild.js';
@@ -154,25 +154,92 @@ function colorRow(value, onChange) {
   return h('div', { class: 'color-row' }, input, sw);
 }
 
-/** Edytor jednej "części" (materiał + kolor). */
-function partEditor(label, part, apply, isTexture) {
+// ---------- moje wykończenia (zapisane kolory + materiał + wzór) ----------
+const PRESET_KEY = 'planer-presets';
+function localPresets() {
+  try { return JSON.parse(localStorage.getItem(PRESET_KEY) || '[]'); } catch { return []; }
+}
+function writeLocalPresets(list) {
+  try { localStorage.setItem(PRESET_KEY, JSON.stringify(list)); } catch {}
+}
+/** Wykończenia z przeglądarki i z projektu (projekt zabiera je ze sobą w pliku .json). */
+function allPresets() {
+  const map = new Map();
+  for (const p of [...localPresets(), ...(store.project.presets ?? [])]) map.set(p.id, p);
+  return [...map.values()];
+}
+function savePreset(part) {
+  const name = prompt('Nazwa wykończenia (np. „Fronty kuchni – szałwia”):', `${materialLabel(part.mat)} ${part.color}`);
+  if (name === null) return;
+  const p = { id: 'P' + Date.now().toString(36), name: name || materialLabel(part.mat), mat: part.mat, color: part.color, pattern: part.pattern ? { ...part.pattern } : undefined };
+  writeLocalPresets([...localPresets(), p]);
+  (store.project.presets ??= []).push(p);
+  store.commit();
+  toast('Zapisano wykończenie „' + p.name + '” – znajdziesz je w „Moje wykończenia” przy każdym meblu');
+  renderProps();
+}
+function deletePreset(id) {
+  writeLocalPresets(localPresets().filter((p) => p.id !== id));
+  store.project.presets = (store.project.presets ?? []).filter((p) => p.id !== id);
+  store.commit();
+  renderProps();
+}
+const finishLabel = (p) => `${materialLabel(p.mat)}, ${p.color}${p.pattern?.type && p.pattern.type !== 'none' ? `, wzór: ${PATTERNS[p.pattern.type]?.toLowerCase()}` : ''}`;
+
+/** Edytor jednej "części" (materiał + kolor + wzór). slot – nazwa części (np. 'front'), żeby móc ustawić ją wszędzie. */
+function partEditor(label, part, apply, slot) {
   const box = h('div', { class: 'part' });
-  const head = h('div', { class: 'part-head' }, h('b', {}, label));
-  const sel = materialSelect(part.mat, (mat) => {
-    part.mat = mat;
-    part.color = mat.startsWith(PH_PREFIX) ? '#ffffff' : defaultColorFor(mat);
-    apply(true);
-    renderProps();
-  });
+  const set = (o) => { Object.assign(part, o); if (!part.pattern || part.pattern.type === 'none') delete part.pattern; apply(true); renderProps(); };
+  const head = h('div', { class: 'part-head' }, h('b', {}, label),
+    h('button', { class: 'tiny', title: 'Zapisz ten kolor/materiał/wzór do „Moje wykończenia”', onclick: () => savePreset(part) }, '⭐ Zapisz'));
+  const presets = allPresets();
+  const presetRow = presets.length ? h('div', { class: 'presets-row' }, h('span', { class: 'sub' }, 'Moje wykończenia:'),
+    h('div', { class: 'chips' }, presets.map((p) => h('span', { class: 'chip-wrap' },
+      h('button', {
+        class: 'chip' + (p.mat === part.mat && p.color === part.color && (p.pattern?.type ?? 'none') === (part.pattern?.type ?? 'none') ? ' on' : ''),
+        title: `${p.name}\n${finishLabel(p)}`, onclick: () => set({ mat: p.mat, color: p.color, pattern: p.pattern ? { ...p.pattern } : undefined }),
+      }, h('img', { src: patternPreview(p.color, p.pattern), alt: '' }), h('span', {}, p.name)),
+      h('button', { class: 'chip-del', title: 'Usuń z „Moje wykończenia”', onclick: () => confirm(`Usunąć wykończenie „${p.name}”?`) && deletePreset(p.id) }, '✕'))))) : null;
+  const sel = materialSelect(part.mat, (mat) => set({ mat, color: mat.startsWith(PH_PREFIX) ? '#ffffff' : defaultColorFor(mat) }));
   const tinted = part.mat.startsWith(PH_PREFIX) || MATERIALS[part.mat]?.tint;
-  box.append(head, sel,
-    h('div', { class: 'sub' }, tinted ? 'Odcień (biały = naturalny kolor materiału)' : 'Kolor'),
+  // dokładny kod koloru (np. z wzornika producenta)
+  const hex = h('input', { class: 'hex', value: part.color, maxlength: 7, title: 'Kod koloru, np. #8a9a7b', onchange: (e) => {
+    let v = e.target.value.trim();
+    if (!v.startsWith('#')) v = '#' + v;
+    if (/^#[0-9a-f]{6}$/i.test(v)) set({ color: v.toLowerCase() }); else { e.target.value = part.color; toast('Wpisz kolor w formacie #RRGGBB, np. #8a9a7b', true); }
+  } });
+  const pat = part.pattern ?? { type: 'none' };
+  const patSel = h('select', { onchange: (e) => set({ pattern: e.target.value === 'none' ? undefined : { type: e.target.value, color2: pat.color2 ?? '#222222', size: pat.size ?? 10 } }) },
+    Object.entries(PATTERNS).map(([k, l]) => h('option', { value: k, selected: k === pat.type }, l)));
+  const patExtra = pat.type !== 'none' ? h('div', { class: 'pattern-row' },
+    h('label', { class: 'field' }, h('span', {}, 'Kolor wzoru'),
+      h('input', { type: 'color', value: pat.color2 ?? '#222222', onchange: (e) => set({ pattern: { ...pat, color2: e.target.value } }) })),
+    numField('Wielkość wzoru', pat.size ?? 10, (v) => set({ pattern: { ...pat, size: v } }), { min: 1, max: 200, unit: 'cm' })) : null;
+  box.append(head, presetRow, sel,
+    h('div', { class: 'sub' }, tinted ? 'Odcień (biały = naturalny kolor materiału) – lub wpisz kod koloru' : 'Kolor – wybierz z palety, z próbnika albo wpisz kod'),
     colorRow(part.color, (c, done) => {
       part.color = c;
       apply(done);
       if (done) renderProps();
-    }));
+    }),
+    h('div', { class: 'hex-row' }, h('span', { class: 'sub' }, 'Kod:'), hex),
+    h('div', { class: 'sub' }, 'Wzór'), patSel, patExtra,
+    slot ? h('button', { class: 'tiny wide', title: 'Ustaw to samo wykończenie tej części we wszystkich meblach projektu', onclick: () => applyPartEverywhere(slot, part, label) }, `⇉ Tak samo we wszystkich meblach (${label.toLowerCase()})`) : null,
+  );
   return box;
+}
+
+/** Kopiuje wykończenie części (np. frontów) do tej samej części we wszystkich meblach. */
+function applyPartEverywhere(slot, part, label) {
+  const targets = store.project.items.filter((it) => it.parts?.[slot] && it.parts[slot] !== part);
+  if (!targets.length) return toast('Żaden inny mebel nie ma części „' + label + '”');
+  if (!confirm(`Ustawić „${finishLabel(part)}” jako ${label.toLowerCase()} w ${targets.length} meblach?`)) return;
+  for (const it of targets) {
+    it.parts[slot] = { mat: part.mat, color: part.color, ...(part.pattern ? { pattern: { ...part.pattern } } : {}) };
+    viewer.rebuildItem(it.id, false);
+  }
+  store.commit();
+  toast(`Zmieniono ${targets.length} mebli`);
 }
 
 function renderProps() {
@@ -239,7 +306,7 @@ function renderProps() {
     sec('Kolory i materiały',
       Object.entries(def.slots).map(([k, s]) => {
         item.parts[k] ??= { mat: s.mat, color: s.color };
-        return partEditor(s.label, item.parts[k], rebuild);
+        return partEditor(s.label, item.parts[k], rebuild, k);
       }),
       h('button', { class: 'small', onclick: () => applyToSameType(item) }, (isWall ? 'Zastosuj do wszystkich ścian' : 'Zastosuj kolory/uchwyty do wszystkich: ' + def.label)),
       def.handles ? h('button', { class: 'small', onclick: () => applyFrontsToAll(item) }, 'Zastosuj fronty i uchwyty do wszystkich szafek') : null,
@@ -982,7 +1049,7 @@ const actions = {
     const rows = [['Nazwa', 'Typ', 'Szerokość [cm]', 'Głębokość [cm]', 'Wysokość [cm]', 'Materiały', 'Uchwyty']];
     for (const it of store.project.items) {
       const def = CATALOG[it.type];
-      const mats = Object.entries(it.parts ?? {}).map(([k, p]) => `${def?.slots?.[k]?.label ?? k}: ${materialLabel(p.mat)} ${p.color}`).join('; ');
+      const mats = Object.entries(it.parts ?? {}).map(([k, p]) => `${def?.slots?.[k]?.label ?? k}: ${materialLabel(p.mat)} ${p.color}${p.pattern ? ` wzór ${PATTERNS[p.pattern.type]} ${p.pattern.color2} ${p.pattern.size} cm` : ''}`).join('; ');
       const hd = it.handle && it.handle.type !== 'none' ? `${(def.handleTypes ?? HANDLE_TYPES)[it.handle.type]} – ${HANDLE_FINISHES[it.handle.finish]?.label}` : '';
       rows.push([it.name, def?.label ?? 'Model 3D', it.w, it.d, it.h, mats, hd]);
     }
