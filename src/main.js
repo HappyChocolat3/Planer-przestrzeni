@@ -4,6 +4,7 @@ import { openPdf, imageToPlan, isPdf, isPlanFile } from './planimport.js';
 import { Viewer } from './scene.js';
 import { CATALOG, newItem, catalogByCategory } from './furniture.js';
 import './catalog2.js'; // dodatkowe meble (kanapy, szafki, szafy, zlewy, łazienka, przedpokój)
+import './catalog3.js'; // kanapa rozkładana i biurko narożne w wielu stylach
 import { MATERIALS, HANDLE_TYPES, HANDLE_FINISHES, materialOptions, materialLabel, defaultColorFor, PH_PREFIX } from './materials.js';
 import * as PH from './polyhaven.js';
 import { Box3, Vector3 } from 'three';
@@ -225,8 +226,13 @@ function renderProps() {
   );
 
   if (def?.params) {
-    sec('Konfiguracja', h('div', { class: 'grid2' },
-      Object.entries(def.params).map(([k, p]) => numField(p.label, item.p?.[k] ?? p.def, (v) => { (item.p ??= {})[k] = Math.round(v); rebuild(); }, { min: p.min, max: p.max }))));
+    // parametry z listą (np. styl) na górze, na całą szerokość; liczbowe w dwóch kolumnach
+    const entries = Object.entries(def.params);
+    const selects = entries.filter(([, p]) => p.options).map(([k, p]) => h('label', { class: 'field' }, h('span', {}, p.label),
+      h('select', { onchange: (e) => { (item.p ??= {})[k] = e.target.value; rebuild(); renderProps(); } },
+        p.options.map(([v, l]) => h('option', { value: v, selected: (item.p?.[k] ?? p.def) === v }, l)))));
+    const nums = entries.filter(([, p]) => !p.options).map(([k, p]) => numField(p.label, item.p?.[k] ?? p.def, (v) => { (item.p ??= {})[k] = Math.round(v); rebuild(); }, { min: p.min, max: p.max }));
+    sec('Konfiguracja', ...selects, nums.length ? h('div', { class: 'grid2' }, nums) : null);
   }
 
   if (def?.slots) {

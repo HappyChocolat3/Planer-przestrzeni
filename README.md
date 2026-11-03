@@ -83,6 +83,7 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
 
 ```
 src/
+  catalog3.js   – kanapa rozkładana i biurko narożne (wybór stylu, mechanizmu, stanu złożona/rozłożona)
   catalog2.js   – rozszerzony katalog (kanapy, narożniki, zlewy, słupki, wyspa, szafy przesuwne, łazienka, przedpokój)
   main.js       – interfejs (katalog, panel właściwości, pasek narzędzi, Poly Haven)
   scene.js      – scena 3D, kamery, pomieszczenie, zaznaczanie i przeciąganie
