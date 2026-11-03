@@ -1,5 +1,11 @@
 # Planer przestrzeni 🏠
 
+## 👉 [Otwórz planer: happychocolat3.github.io/Planer-przestrzeni](https://happychocolat3.github.io/Planer-przestrzeni/)
+
+Działa w przeglądarce (komputer, tablet, telefon) – bez instalacji i bez logowania.
+
+[![Podgląd planera](public/podglad.png)](https://happychocolat3.github.io/Planer-przestrzeni/)
+
 Przeglądarkowy planer wnętrz: wizualizacja **3D** i **rzut 2D**, dodawanie / usuwanie / przesuwanie mebli,
 zmiana **kolorów**, **materiałów** i **uchwytów**.
 
