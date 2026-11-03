@@ -44,7 +44,7 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
 
 - **Pomieszczenie** – szerokość, długość, wysokość; materiał i kolor podłogi oraz ścian; ściany od strony kamery
   chowają się automatycznie, żeby było widać wnętrze.
-- **Katalog ~30 mebli** o typowych wymiarach (kuchnia, salon, sypialnia, jadalnia/biuro, łazienka, architektura –
+- **Katalog ~75 mebli** o typowych wymiarach (kuchnia, salon, sypialnia, jadalnia/biuro, łazienka, przedpokój, architektura –
   drzwi, okna, ścianki działowe). Każdy mebel jest parametryczny: zmieniasz szerokość/głębokość/wysokość,
   liczbę drzwi, szuflad, półek, siedzisk; są też szybkie przyciski z typowymi wymiarami (np. łóżko 90–200 cm,
   szafki kuchenne 30–100 cm).
@@ -83,6 +83,7 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
 
 ```
 src/
+  catalog2.js   – rozszerzony katalog (kanapy, narożniki, zlewy, słupki, wyspa, szafy przesuwne, łazienka, przedpokój)
   main.js       – interfejs (katalog, panel właściwości, pasek narzędzi, Poly Haven)
   scene.js      – scena 3D, kamery, pomieszczenie, zaznaczanie i przeciąganie
   furniture.js  – katalog parametrycznych mebli i uchwytów

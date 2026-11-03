@@ -106,14 +106,34 @@ function handleMesh(type, finishKey, len) {
 function addFront(g, item, m, rect, z, opt = {}) {
   const { x, y, w, h } = rect;
   const fw = w - GAP, fh = h - GAP;
-  addBox(g, m('front'), fw, fh, T, x, y + GAP / 2, z + T / 2);
+  if (opt.glass) {
+    // front przeszklony: rama z materiału frontu + szyba
+    const f = Math.min(0.06, fw / 4, fh / 4);
+    addBox(g, m('front'), fw, f, T, x, y + GAP / 2, z + T / 2);
+    addBox(g, m('front'), fw, f, T, x, y + GAP / 2 + fh - f, z + T / 2);
+    addBox(g, m('front'), f, fh - 2 * f, T, x - fw / 2 + f / 2, y + GAP / 2 + f, z + T / 2);
+    addBox(g, m('front'), f, fh - 2 * f, T, x + fw / 2 - f / 2, y + GAP / 2 + f, z + T / 2);
+    addBox(g, getMaterial('glass', '#dfeef0'), fw - 2 * f, fh - 2 * f, 0.004, x, y + GAP / 2 + f, z + T / 2);
+  } else {
+    addBox(g, m('front'), fw, fh, T, x, y + GAP / 2, z + T / 2);
+  }
   const type = item.handle?.type ?? 'none';
   if (type === 'none') return;
   const finish = item.handle?.finish ?? 'steel';
   const zf = z + T;
   const kind = opt.kind ?? 'door';
-  let vertical = kind === 'door' && !['edge', 'gola', 'cup'].includes(type);
   let len;
+  let vertical = kind === 'door' && !['edge', 'gola', 'cup'].includes(type);
+  if (kind === 'flap') {
+    // front uchylny (np. szafka górna, szafka na buty): poziomy uchwyt przy dolnej krawędzi
+    len = type === 'barLong' ? Math.min(fw * 0.75, 0.6) : type === 'bar' ? Math.min(fw * 0.5, 0.192) : type === 'gola' ? fw : type === 'edge' ? Math.min(fw * 0.5, 0.3) : 0.1;
+    const hmF = handleMesh(type, finish, len);
+    if (!hmF) return;
+    if (type === 'edge' || type === 'gola') { hmF.rotation.x = Math.PI; hmF.position.set(x, y + GAP / 2, type === 'gola' ? z : zf); }
+    else hmF.position.set(x, y + 0.05, zf);
+    g.add(hmF);
+    return;
+  }
   if (type === 'barLong') len = vertical ? Math.min(fh * 0.6, 0.6) : Math.min(fw * 0.75, 0.6);
   else if (type === 'bar') len = vertical ? 0.16 : Math.min(fw * 0.5, fw > 0.5 ? 0.192 : 0.128);
   else if (type === 'edge') len = Math.min(fw * 0.5, 0.3);
@@ -1152,3 +1172,6 @@ export function catalogByCategory() {
   for (const [k, d] of Object.entries(CATALOG)) if (!d.hidden) (out[d.cat] ??= []).push([k, d]);
   return out;
 }
+
+// pomocnicze funkcje i stałe dla dodatkowego katalogu (catalog2.js)
+export { T, GAP, handleMesh, addFront, doorsRow, drawersCol, carcass, legs4, S, kitchenBase };

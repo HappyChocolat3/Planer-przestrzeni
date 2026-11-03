@@ -3,6 +3,7 @@ import { putAsset, resolveAsset, collectAssets, importAssets } from './assets.js
 import { openPdf, imageToPlan, isPdf, isPlanFile } from './planimport.js';
 import { Viewer } from './scene.js';
 import { CATALOG, newItem, catalogByCategory } from './furniture.js';
+import './catalog2.js'; // dodatkowe meble (kanapy, szafki, szafy, zlewy, łazienka, przedpokój)
 import { MATERIALS, HANDLE_TYPES, HANDLE_FINISHES, materialOptions, materialLabel, defaultColorFor, PH_PREFIX } from './materials.js';
 import * as PH from './polyhaven.js';
 import { Box3, Vector3 } from 'three';
