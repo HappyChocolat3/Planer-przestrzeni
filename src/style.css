@@ -211,3 +211,9 @@ button.tiny.wide { width: 100%; margin-top: 8px; }
 .pattern-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
 .pattern-row input[type='color'] { width: 100%; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
 .part > select { width: 100%; }
+
+/* --- biblioteka mebli 3D --- */
+.lib-open { width: 100%; margin: 4px 0 2px; background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+.lib-card img { background: linear-gradient(180deg, #f3f5f7, #e6eaee); object-fit: contain; }
+:root[data-theme='dark'] .lib-card img { background: linear-gradient(180deg, #2a313a, #222830); }
+.lib-card small { color: var(--muted); font-size: 11px; }

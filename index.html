@@ -63,7 +63,8 @@
       <button data-act="camera" title="Wyśrodkuj widok">⌖</button>
     </div>
     <div class="group">
-      <button data-act="polyhaven" class="accent" title="Darmowe tekstury i modele 3D (CC0)">Baza Poly Haven</button>
+      <button data-act="library" class="accent" title="Ponad 200 darmowych modeli mebli 3D (licencja CC0)">📦 Meble 3D</button>
+      <button data-act="polyhaven" title="Darmowe tekstury i modele 3D (CC0)">Baza Poly Haven</button>
       <button data-act="import" title="Importuj własny model .glb/.gltf">Importuj model</button>
     </div>
     <label class="snap">Siatka
@@ -106,6 +107,19 @@
     <div id="phStatus" class="ph-status"></div>
     <div id="phGrid" class="ph-grid"></div>
     <div class="ph-foot">Zasoby: <a href="https://polyhaven.com" target="_blank" rel="noopener">polyhaven.com</a> – licencja CC0 (domena publiczna). Wymaga połączenia z internetem.</div>
+  </dialog>
+
+  <dialog id="libDialog" class="ph">
+    <form method="dialog" class="ph-head">
+      <strong>📦 Biblioteka mebli 3D (darmowe, CC0)</strong>
+      <select id="libCat"></select>
+      <select id="libPack"></select>
+      <input id="libSearch" type="search" placeholder="Szukaj, np. sofa, łóżko, lampa…" />
+      <button value="close" class="ghost">✕</button>
+    </form>
+    <div id="libStatus" class="ph-status"></div>
+    <div id="libGrid" class="ph-grid"></div>
+    <div id="libFoot" class="ph-foot"></div>
   </dialog>
 
   <dialog id="pdfDialog" class="ph pdf">

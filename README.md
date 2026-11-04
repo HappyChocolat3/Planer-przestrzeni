@@ -62,6 +62,8 @@ workflow `.github/workflows/pages.yml` zbuduje i opublikuje aplikację po każdy
 - **Uchwyty** – reling, reling długi, gałka, muszelka, pierścień, krawędziowy, gola, skórzany pasek;
   10 wykończeń (chrom, stal, czarny mat, mosiądz, złoto, miedź, grafit, biały, drewno, skóra); strona zawiasów.
   Przycisk „Zastosuj fronty i uchwyty do wszystkich szafek” zmienia całą zabudowę jednym kliknięciem.
+- **📦 Biblioteka mebli 3D** – ponad 200 gotowych, darmowych modeli (licencja CC0) z miniaturkami, polskimi nazwami,
+  kategoriami i wyszukiwarką; wstawiają się w rzeczywistych wymiarach, można zmienić rozmiar i odcień.
 - **Darmowe bazy** – przycisk *Baza Poly Haven* przegląda [polyhaven.com](https://polyhaven.com)
   (tekstury i modele 3D na licencji **CC0**). Tekstury (z mapami normalnych i chropowatości, w rzeczywistej skali)
   nakładasz na wybrany mebel, podłogę lub ściany; modele dodajesz do sceny. Wymaga internetu.
@@ -101,3 +103,16 @@ src/
   ai.js         – rozpoznawanie planu przez Claude (Anthropic SDK, structured outputs)
   planBuild.js  – budowa modelu (poziomy, ściany, otwory, pomieszczenia, wyposażenie) z rozpoznanego planu
 ```
+
+## Modele 3D – źródła i licencje
+
+Wszystkie modele w `public/models` są na licencji **CC0 1.0** (domena publiczna) – można ich używać bez ograniczeń,
+także komercyjnie. Dziękujemy autorom:
+
+| Kolekcja | Autor | Modeli |
+|---|---|---|
+| [Furniture Kit](https://kenney.nl/assets/furniture-kit) | Kenney (kenney.nl) | 140 |
+| [Furniture Bits](https://kaylousberg.itch.io/furniture-bits) | Kay Lousberg (kaylousberg.com) | 53 |
+| [Ultimate House Interior](https://quaternius.com/packs/ultimatehomeinterior.html) | Quaternius | 8 |
+
+Tekstury i dodatkowe modele z [Poly Haven](https://polyhaven.com) (CC0) są pobierane na żądanie.

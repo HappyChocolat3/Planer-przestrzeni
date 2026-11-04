@@ -38,6 +38,7 @@ const SWATCHES = [
 function renderCatalog(filter = '') {
   const root = $('#catalog');
   root.innerHTML = '';
+  root.append(h('button', { class: 'lib-open', onclick: () => openLibrary() }, '📦 Więcej mebli 3D – 200 darmowych modeli'));
   const f = filter.trim().toLowerCase();
   for (const [cat, entries] of Object.entries(catalogByCategory())) {
     const list = entries.filter(([, d]) => !f || d.label.toLowerCase().includes(f) || cat.toLowerCase().includes(f));
@@ -1060,6 +1061,7 @@ const actions = {
   redo: () => store.redo(),
   camera: () => viewer.resetCamera(),
   polyhaven: () => openPolyHaven(),
+  library: () => openLibrary(),
   import: () => $('#fileModel').click(),
   help: () => $('#helpDialog').showModal(),
   plan: () => $('#filePlan').click(),
@@ -1170,13 +1172,15 @@ viewer.requestModel = (item) => {
     .catch((err) => console.warn('Nie wczytano modelu', item.src, err)));
 };
 
-async function addModel(src, name, credit, page) {
+async function addModel(src, name, credit, page, dims) {
   try {
     toast('Wczytywanie modelu…');
     const gltf = await PH.loadGLTF(await resolveAsset(src));
     viewer.gltfCache.set(src, gltf);
     const item = { id: crypto.randomUUID?.() ?? String(Math.random()).slice(2), type: 'gltf', level: viewer.levelId, name, src, credit, page, x: store.project.room.x ?? 0, z: store.project.room.z ?? 0, rot: 0, elev: 0, w: 100, d: 100, h: 100, parts: {}, tint: '#ffffff' };
-    resetModelSize(item, gltf);
+    if (dims) Object.assign(item, dims); // rozmiar w cm z biblioteki (modele mają różne jednostki)
+    else resetModelSize(item, gltf);
+    Object.assign(item, freeSpot(item));
     Object.assign(item, viewer.constrain(item, item.x, item.z));
     store.project.items.push(item);
     store.commit('add');
@@ -1187,6 +1191,47 @@ async function addModel(src, name, credit, page) {
     toast('Nie udało się wczytać modelu: ' + err.message, true);
   }
 }
+
+// ---------- biblioteka otwartych mebli 3D (CC0) ----------
+let libData = null;
+const libDlg = $('#libDialog');
+async function openLibrary() {
+  libDlg.showModal();
+  if (!libData) {
+    $('#libStatus').textContent = 'Wczytywanie biblioteki…';
+    try {
+      libData = await (await fetch('./models/library.json')).json();
+    } catch (err) {
+      $('#libStatus').textContent = 'Nie udało się wczytać biblioteki: ' + err.message;
+      return;
+    }
+    const cats = [...new Set(libData.items.map((i) => i.cat))].sort((a, b) => a.localeCompare(b, 'pl'));
+    $('#libCat').replaceChildren(h('option', { value: '' }, `Wszystkie kategorie (${libData.items.length})`),
+      ...cats.map((c) => h('option', { value: c }, `${c} (${libData.items.filter((i) => i.cat === c).length})`)));
+    $('#libPack').replaceChildren(h('option', { value: '' }, 'Wszystkie kolekcje'),
+      ...Object.entries(libData.packs).map(([k, p]) => h('option', { value: k }, p.label)));
+    $('#libFoot').replaceChildren('Modele na licencji ', h('b', {}, 'CC0 (domena publiczna)'), ' – można ich używać bez ograniczeń. Autorzy: ',
+      ...Object.values(libData.packs).flatMap((p, i) => [i ? ', ' : '', h('a', { href: p.url, target: '_blank', rel: 'noopener' }, p.author)]), '. Dziękujemy!');
+  }
+  renderLibrary();
+}
+function renderLibrary() {
+  if (!libData) return;
+  const q = $('#libSearch').value.trim().toLowerCase(), cat = $('#libCat').value, pack = $('#libPack').value;
+  const list = libData.items.filter((i) => (!cat || i.cat === cat) && (!pack || i.pack === pack) && (!q || i.name.toLowerCase().includes(q) || i.id.toLowerCase().includes(q)));
+  $('#libStatus').textContent = `${list.length} modeli`;
+  $('#libGrid').replaceChildren(...list.map((i) => h('button', {
+    class: 'ph-card lib-card', title: `${i.name}\n${libData.packs[i.pack].label}`,
+    onclick: () => {
+      libDlg.close();
+      const p = libData.packs[i.pack];
+      addModel(`./models/${i.pack}/${i.file}`, i.name, `${p.label} (CC0)`, p.url, { w: i.w, d: i.d, h: i.h });
+    },
+  }, h('img', { src: './models/' + i.thumb, loading: 'lazy', alt: i.name }), h('span', {}, i.name), h('small', {}, `${i.w}×${i.d}×${i.h} cm`))));
+}
+$('#libSearch').addEventListener('input', renderLibrary);
+$('#libCat').addEventListener('change', renderLibrary);
+$('#libPack').addEventListener('change', renderLibrary);
 
 // ---------- Poly Haven ----------
 let phType = 'textures';
